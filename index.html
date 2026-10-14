@@ -3356,9 +3356,9 @@ function buildSample(){
 /* ================= Boot ================= */
 for(const el of [document.getElementById('app'),document.querySelector('.main'),vpEl]) el.addEventListener('scroll',()=>{ if(el.scrollLeft||el.scrollTop){ el.scrollLeft=0; el.scrollTop=0; } });
 let loaded=false; try{ const s=localStorage.getItem('uniperformance.autosave'); if(s){ const d=JSON.parse(s); if(d.ver===2){ loadModel(d); loaded=M.F.size>0||M.E.size>0||M.Gr.size>0; } } }catch(e){ loaded=false; }
-if(!loaded) buildSample();
+/* modelo de exemplo removido: inicia vazio */
 buildAxes(); tool=T.select; tool.id='select'; buildToolbars(); renderTray(); resize(); setTool('select'); refreshSelSub(); rebuild(); buildSceneTabs(); setView('iso');
-if(!loaded){ const n=$('#vpnote'); n.textContent='Casa de exemplo carregada. Use Arquivo ▸ Novo para começar do zero.'; n.hidden=false; setTimeout(()=>n.hidden=true,9000); }
+
 requestAnimationFrame(loop);
 setTimeout(()=>{ $('#splash').classList.add('hide'); setTimeout(()=>$('#splash').remove(),600); },1300);
 window.__uni={buildSKPBytes,openSKPUI,genTex,makeTex,texThumb,defaultMats,openPanel,setStyle,libAll,importToLibrary,refreshLib,exportDAE,importDAEFile,importMaterialFiles,unzip,dbg:()=>({cam:camAnim?1:0,rec:!!rec,state:rec&&rec.mr.state,pos:persp.position.toArray().map(v=>+v.toFixed(2))}),V3,M4,THREE,pathFromSelection,ensureVertexP:p=>ensureVertex(p),refreshSelSub,rebuild,addPointCloud,terrainFromPoints,text3DSpec,sectionCut,M,T,R,setTool,pushPull,serialize,enterRender,exitRender,undo,redo,zoomExtents,setView,afterChange,makePolygonFace,addSegment,ensureVertex,deleteEdge,screen:(c)=>toScreen(new V3(...c)),act,sel,enterGroup,closeGroup,solidOp,followMe,intersectFaces,libSpec,createInstance,tr,get ctx(){ return ctx; },openPanel,buildSample,isSolid,renderPanorama,startVideo};
