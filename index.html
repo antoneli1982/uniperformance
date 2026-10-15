@@ -231,7 +231,7 @@ body.rendering .tbtn.model{opacity:.3;pointer-events:none}
       <div class="tip" id="tip"></div>
       <div id="selbox"></div>
       <div id="ctxbar"></div>
-      <div id="dropzone">Solte imagens ou .skm para criar materiais, .dae/.kmz para importar o modelo, ou .skp para ler o arquivo do SketchUp</div>
+      <div id="dropzone">Solte imagens ou .skm para materiais, .dae/.kmz/.skp para modelos, ou .xyz/.pts/.ply (até 1 GB) para nuvens de pontos</div>
       <div id="recbadge">● Gravando</div>
       <div class="walkhint">Arraste para olhar · <b>W A S D</b> caminha · <b>Q/E</b> desce/sobe · roda do mouse aproxima</div>
       <div class="vp-note" id="vpnote" hidden></div>
@@ -252,9 +252,10 @@ body.rendering .tbtn.model{opacity:.3;pointer-events:none}
 <div id="toast" role="status"></div>
 <div class="modal" id="modal"><div class="mbox" id="mbox"></div></div>
 <div id="printArea"></div>
-<input type="file" id="fileIn" accept=".json,.uni3d,.skp,.dae,.kmz,application/json" hidden>
+<input type="file" id="fileIn" accept=".json,.uni3d,.skp,.dae,.kmz,.zip,.xyz,.pts,.ply,.csv,.txt,application/json" hidden>
 <input type="file" id="skpIn" accept=".skp" hidden>
 <input type="file" id="objIn" accept=".obj" hidden>
+<input type="file" id="cloudFileIn" hidden>
 <input type="file" id="pcIn" accept=".xyz,.txt,.csv,.pts,.ply" hidden>
 <input type="file" id="daeIn" accept=".dae,.kmz,.zip" hidden>
 <input type="file" id="matIn" accept="image/*,.skm,.zip" multiple hidden>
@@ -494,13 +495,18 @@ function loadModel(s){
   for(const g of d.Gr||[]) M.Gr.set(g.id,{...g});
   for(const df of d.defs||[]) M.defs.set(df.id,{...df});
   M.G=(d.G||[]).map(g=>({p:new V3().fromArray(g.p),d:g.d?new V3().fromArray(g.d):null}));
-  M.ann=d.ann||[]; M.secs=d.secs||[]; M.activeSec=d.activeSec??null; M.clouds=d.clouds||[];
+  M.ann=d.ann||[]; M.secs=d.secs||[]; M.activeSec=d.activeSec??null; M.clouds=(d.clouds||[]).map(attachCloud);
   if(d.tags) M.tags=d.tags; if(d.scenes) M.scenes=d.scenes; if(d.mats){ M.mats=d.mats; for(const dm of defaultMats()) if(!M.mats.find(m=>m.id===dm.id)) M.mats.push(dm); }
   if(d.axes) M.axes={o:new V3().fromArray(d.axes.o),x:new V3().fromArray(d.axes.x),y:new V3().fromArray(d.axes.y),z:new V3().fromArray(d.axes.z)};
   if(d.loc) M.loc=d.loc; if(d.shadow) M.shadow={...M.shadow,...d.shadow}; if(d.style) M.style={...M.style,...d.style}; if(d.secShow) M.secShow=d.secShow; if(d.info) M.info=d.info;
   let mx=0; for(const k of [...M.V.keys(),...M.F.keys(),...M.Gr.keys()]) mx=Math.max(mx,k); M.nid=Math.max(M.nid,mx+1);
   if(!M.Gr.has(ctx)) ctx=0;
 }
+/* point-cloud payloads live outside the model JSON (undo/autosave stay light; big scans don't get copied) */
+const CLOUD_DATA=new Map(), EMPTY_F32=new Float32Array(0);
+function attachCloud(c){ c={...c}; if(c.pos&&!CLOUD_DATA.has(c.id)) CLOUD_DATA.set(c.id,{pos:Float32Array.from(c.pos),col:c.col?Uint8Array.from(c.col):null}); delete c.pos; delete c.col;
+  const D=()=>CLOUD_DATA.get(c.id); Object.defineProperty(c,'pos',{get:()=>D()?.pos||EMPTY_F32,enumerable:false,configurable:true}); Object.defineProperty(c,'col',{get:()=>D()?.col||null,enumerable:false,configurable:true});
+  c.n=D()?D().pos.length/3:(c.n||0); return c; }
 function newVert(p,g=ctx){ const id=M.nid++; M.V.set(id,p.clone()); if(g) M.VG.set(id,g); return id; }
 function findVert(p,eps=EPS,g=ctx){ const e2=eps*eps; for(const [id,v] of M.V) if(vg(id)===g && v.distanceToSquared(p)<e2) return id; return null; }
 function addEdgeRaw(a,b,g=ctx,x){ const k=ek(a,b); if(a!==b && !M.E.has(k)) M.E.set(k,{a:Math.min(a,b),b:Math.max(a,b),h:false,g,tag:null,...(x||{})}); return k; }
@@ -1025,7 +1031,7 @@ function sectionCut(s){
 
 /* ---------- point clouds ---------- */
 function buildClouds(){ cloudObj.children.forEach(o=>o.geometry.dispose()); cloudObj.clear();
-  for(const c of M.clouds){ if(c.h) continue; const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(c.pos,3)); let mat; if(c.col&&c.col.length===c.pos.length){ g.setAttribute('color',new THREE.Float32BufferAttribute(c.col.map(x=>x/255),3)); mat=new THREE.PointsMaterial({size:2.2,sizeAttenuation:false,vertexColors:true}); } else mat=new THREE.PointsMaterial({size:2.2,sizeAttenuation:false,color:0x4a6a8a}); cloudObj.add(new THREE.Points(g,mat)); } }
+  for(const c of M.clouds){ if(c.h) continue; const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(c.pos,3)); let mat; if(c.col&&c.col.length===c.pos.length){ g.setAttribute('color',new THREE.Uint8BufferAttribute(c.col,3,true)); mat=new THREE.PointsMaterial({size:2.2,sizeAttenuation:false,vertexColors:true}); } else mat=new THREE.PointsMaterial({size:2.2,sizeAttenuation:false,color:0x4a6a8a}); cloudObj.add(new THREE.Points(g,mat)); } }
 
 /* ---------- sun & shadows ---------- */
 function dayOfYear(m,d){ const dm=[31,28,31,30,31,30,31,31,30,31,30,31]; let n=d; for(let i=0;i<m-1;i++) n+=dm[i]; return n; }
@@ -1400,7 +1406,7 @@ function validateSel(){ for(const f of [...sel.F]) if(!M.F.has(f)) sel.F.delete(
 function undo(){ if(!undoStack.length){ toast('Nada para desfazer'); return; } tool.cancel&&tool.cancel(); redoStack.push(serialize()); loadModel(undoStack.pop()); validateSel(); afterChange(); toast('Desfeito'); }
 function redo(){ if(!redoStack.length){ toast('Nada para refazer'); return; } tool.cancel&&tool.cancel(); undoStack.push(serialize()); loadModel(redoStack.pop()); validateSel(); afterChange(); toast('Refeito'); }
 let saveTimer=null;
-function afterChange(){ purge(); validateSel(); cloudSnap=null; rebuild(); updateCtxBar(); updatePanels(); clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ try{ localStorage.setItem('uniperformance.autosave',serialize()); }catch(e){} },600); }
+function afterChange(){ purge(); validateSel(); cloudSnap=null; rebuild(); updateCtxBar(); updatePanels(); clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ STORE.put('kv',{id:'autosave',v:serialize(),t:Date.now()}).catch(()=>{}); },900); }
 
 /* ================= Group context ================= */
 function enterGroup(gid){ const G=M.Gr.get(gid); if(!G) return; if(G.lock){ toast('Grupo travado. Destrave pelo menu de contexto.'); return; } ctx=gid; sel.F.clear(); sel.E.clear(); sel.G.clear(); validateSel(); rebuild(); updateCtxBar(); updatePanels(); toast('Editando '+groupName(G)); }
@@ -2187,6 +2193,40 @@ function text3DSpec(text,height,depth,mat){ const tr_=traceText(text); const s=h
   return {name:'Texto 3D: '+text,cls:'Outro',build:B=>{ for(const sh of tr_.shapes){ const conv=l=>l.map(([x,y])=>[ox+x*s,(y-tr_.base)*s]); B.extrudeXZ(conv(sh.o),sh.hs.map(conv),0,depth,mat); } }}; }
 
 /* ================= Point clouds ================= */
+const CLOUD_MAX=2000000;
+/* streaming reader: files up to ~1 GB are read in slices, never as one string; decimated to CLOUD_MAX points */
+async function readPointCloudFile(file,onProg,signal){
+  const head=new Uint8Array(await file.slice(0,65536).arrayBuffer()); const htxt=new TextDecoder('latin1').decode(head);
+  const yieldUI=()=>new Promise(r=>setTimeout(r,0));
+  let pos=new Float64Array(3*1<<16), col=null, k=0; const push=(x,y,z,r,g,b)=>{ if(k*3+3>pos.length){ const np=new Float64Array(pos.length*2); np.set(pos); pos=np; if(col){ const nc=new Uint8Array(col.length*2); nc.set(col); col=nc; } }
+    pos[k*3]=x; pos[k*3+1]=y; pos[k*3+2]=z; if(r!==undefined){ if(!col){ col=new Uint8Array(pos.length); } col[k*3]=r; col[k*3+1]=g; col[k*3+2]=b; } k++; };
+  if(/^ply\r?\n/.test(htxt)){
+    const he=htxt.indexOf('end_header'); if(he<0) throw new Error('cabeçalho PLY inválido'); const hl=htxt.slice(0,he); const hlen=he+'end_header'.length+(htxt[he+10]==='\r'?2:1);
+    const fmt=(hl.match(/format\s+(\S+)/)||[])[1]; let nv=0, inV=false; const props=[];
+    for(const l of hl.split(/\r?\n/)){ const t=l.trim().split(/\s+/); if(t[0]==='element'){ inV=t[1]==='vertex'; if(inV) nv=+t[2]; else if(!nv) throw new Error('PLY com elementos antes dos vértices não suportado'); } else if(t[0]==='property'&&inV){ if(t[1]==='list') throw new Error('PLY com listas nos vértices não suportado'); props.push({t:t[1],n:t[2]}); } }
+    const ix=props.findIndex(p=>p.n==='x'), iy=props.findIndex(p=>p.n==='y'), iz=props.findIndex(p=>p.n==='z'); const ir=props.findIndex(p=>p.n==='red'||p.n==='r'), ig=props.findIndex(p=>p.n==='green'||p.n==='g'), ib=props.findIndex(p=>p.n==='blue'||p.n==='b');
+    if(ix<0||iy<0||iz<0) throw new Error('PLY sem x, y, z');
+    const step=Math.max(1,Math.ceil(nv/CLOUD_MAX));
+    if(fmt==='ascii'){ let line=0; await streamLines(file,hlen,(l)=>{ if(line++%step) return; const t=l.trim().split(/\s+/); const x=+t[ix],y=+t[iy],z=+t[iz]; if(!isFinite(x)||!isFinite(y)||!isFinite(z)) return; if(ir>=0&&t.length>Math.max(ir,ig,ib)){ let r=+t[ir],g=+t[ig],b=+t[ib]; if(r<=1&&g<=1&&b<=1&&/float|double/.test(props[ir].t)){ r*=255; g*=255; b*=255; } push(x,y,z,r,g,b); } else push(x,y,z); },onProg,signal,yieldUI); }
+    else if(fmt==='binary_little_endian'||fmt==='binary_big_endian'){ const le=fmt==='binary_little_endian'; const SZ={char:1,int8:1,uchar:1,uint8:1,short:2,int16:2,ushort:2,uint16:2,int:4,int32:4,uint:4,uint32:4,float:4,float32:4,double:8,float64:8};
+      const offs=[]; let stride=0; for(const p of props){ const sz=SZ[p.t]; if(!sz) throw new Error('tipo PLY '+p.t); offs.push(stride); stride+=sz; }
+      const rd=(dv,o,t)=>{ switch(t){ case 'char':case 'int8':return dv.getInt8(o); case 'uchar':case 'uint8':return dv.getUint8(o); case 'short':case 'int16':return dv.getInt16(o,le); case 'ushort':case 'uint16':return dv.getUint16(o,le); case 'int':case 'int32':return dv.getInt32(o,le); case 'uint':case 'uint32':return dv.getUint32(o,le); case 'float':case 'float32':return dv.getFloat32(o,le); default:return dv.getFloat64(o,le); } };
+      const per=Math.max(1,Math.floor((16<<20)/stride)); const cf=ir>=0&&/float|double/.test(props[ir].t)?255:1;
+      for(let v=0;v<nv;v+=per){ if(signal&&signal.aborted) throw new DOMException('cancelado','AbortError'); const cntV=Math.min(per,nv-v); const buf=await file.slice(hlen+v*stride,hlen+(v+cntV)*stride).arrayBuffer(); const dv=new DataView(buf);
+        for(let j=(step-(v%step))%step;j<cntV;j+=step){ const o=j*stride; const x=rd(dv,o+offs[ix],props[ix].t), y=rd(dv,o+offs[iy],props[iy].t), z=rd(dv,o+offs[iz],props[iz].t); if(ir>=0&&ig>=0&&ib>=0) push(x,y,z,rd(dv,o+offs[ir],props[ir].t)*cf,rd(dv,o+offs[ig],props[ig].t)*cf,rd(dv,o+offs[ib],props[ib].t)*cf); else push(x,y,z); }
+        onProg&&onProg((v+cntV)/nv); await yieldUI(); } }
+    else throw new Error('formato PLY desconhecido');
+    return {pos:pos.subarray(0,k*3),col:col?col.subarray(0,k*3):null,decimated:step>1}; }
+  // text formats (.xyz .txt .csv .pts): estimate the line count from the first 64 KB to decimate while streaming
+  const sample=htxt.split('\n'); const avg=Math.max(8,65536/Math.max(1,sample.length-1)); const est=file.size/avg; const step=Math.max(1,Math.ceil(est/CLOUD_MAX)); let line=0;
+  await streamLines(file,0,(l)=>{ if(line++%step) return; const t=l.trim().split(/[\s,;]+/); if(t.length<3) return; const x=+t[0],y=+t[1],z=+t[2]; if(!isFinite(x)||!isFinite(y)||!isFinite(z)) return;
+    const ci=t.length>=7?4:t.length>=6?3:-1; if(ci>0){ const r=+t[ci],g=+t[ci+1],b=+t[ci+2]; if(isFinite(r)&&isFinite(g)&&isFinite(b)){ const f=(r<=1&&g<=1&&b<=1)?255:1; push(x,y,z,r*f,g*f,b*f); return; } } push(x,y,z); },onProg,signal,yieldUI);
+  return {pos:pos.subarray(0,k*3),col:col?col.subarray(0,k*3):null,decimated:step>1}; }
+async function streamLines(file,start,fn,onProg,signal,yieldUI){ const CH=8<<20; const dec=new TextDecoder(); let rest='';
+  for(let o=start;o<file.size;o+=CH){ if(signal&&signal.aborted) throw new DOMException('cancelado','AbortError'); const txt=rest+dec.decode(await file.slice(o,Math.min(file.size,o+CH)).arrayBuffer(),{stream:o+CH<file.size}); const lines=txt.split('\n'); rest=lines.pop(); for(const l of lines) fn(l); onProg&&onProg((Math.min(file.size,o+CH)-start)/(file.size-start||1)); await yieldUI(); }
+  if(rest) fn(rest); }
+function progressModal(title,onCancel){ openModal(`<h2>${esc(title)}</h2><div style="height:8px;background:var(--line);border-radius:4px;overflow:hidden"><div id="pgBar" style="height:100%;width:0;background:var(--accent);transition:width .15s"></div></div><p class="note" id="pgTxt" style="margin-top:8px">0%</p><div class="acts">${onCancel?'<button class="btn" id="pgCancel">Cancelar</button>':''}</div>`); if(onCancel) $('#pgCancel').onclick=onCancel;
+  return { set(f,txt){ const b=$('#pgBar'); if(b) b.style.width=Math.round(f*100)+'%'; const t=$('#pgTxt'); if(t) t.textContent=txt||Math.round(f*100)+'%'; }, close(){ closeModal(); } }; }
 function parsePointCloud(txt,name){
   const lines=txt.split(/\r?\n/); let start=0, isPly=false, nv=0, props=[];
   if(/^ply/.test(lines[0])){ isPly=true; for(let i=0;i<lines.length;i++){ const l=lines[i].trim(); if(l.startsWith('format')&&!l.includes('ascii')) throw new Error('PLY binário não suportado; exporte em ASCII'); if(l.startsWith('element vertex')) nv=parseInt(l.split(/\s+/)[2]); if(l.startsWith('property')) props.push(l.split(/\s+/).pop()); if(l==='end_header'){ start=i+1; break; } } }
@@ -2194,10 +2234,12 @@ function parsePointCloud(txt,name){
   for(let i=start;i<lines.length;i++){ if(isPly&&pos.length/3>=nv) break; const t=lines[i].trim().split(/[\s,;]+/); if(t.length<3) continue; const x=+t[ix], y=+t[iy], z=+t[iz]; if(!isFinite(x)||!isFinite(y)||!isFinite(z)) continue; pos.push(x,y,z); if(ir>=0&&t.length>ir+2){ const r=+t[ir],g=+t[ir+1],b=+t[ir+2]; if(isFinite(r)&&isFinite(g)&&isFinite(b)) col.push(r>1.001?r:r*255,g>1.001?g:g*255,b>1.001?b:b*255); } }
   return {pos,col:col.length===pos.length?col:null};
 }
-function addPointCloud(data,name,scale){ let {pos,col}=data; const n=pos.length/3; const maxN=350000; let step=1; if(n>maxN) step=Math.ceil(n/maxN);
-  const P_=[],C_=[]; let cx=0,cy=0,cz=Infinity, cnt=0; for(let i=0;i<n;i+=step){ cx+=pos[i*3]; cy+=pos[i*3+1]; cz=Math.min(cz,pos[i*3+2]); cnt++; } cx/=cnt; cy/=cnt;
-  const far=Math.abs(cx)>5000||Math.abs(cy)>5000; for(let i=0;i<n;i+=step){ P_.push(+((pos[i*3]-(far?cx:0))*scale).toFixed(4),+((pos[i*3+1]-(far?cy:0))*scale).toFixed(4),+((pos[i*3+2]-(far?cz:0))*scale).toFixed(4)); if(col) C_.push(Math.round(col[i*3]),Math.round(col[i*3+1]),Math.round(col[i*3+2])); }
-  M.clouds.push({id:'c'+M.nid++,name,pos:P_,col:col?C_:null,h:false}); return {count:P_.length/3,decimated:step>1,recentered:far}; }
+function addPointCloud(data,name,scale){ const pos=data.pos, col=data.col, n=Math.floor(pos.length/3); const maxN=CLOUD_MAX; const step=n>maxN?Math.ceil(n/maxN):1;
+  let cx=0,cy=0,cz=Infinity,cnt=0; for(let i=0;i<n;i+=step){ cx+=pos[i*3]; cy+=pos[i*3+1]; cz=Math.min(cz,pos[i*3+2]); cnt++; } cx/=cnt; cy/=cnt;
+  const far=Math.abs(cx)>5000||Math.abs(cy)>5000; const m=Math.ceil(n/step); const P_=new Float32Array(m*3), C_=col?new Uint8Array(m*3):null; let k=0;
+  for(let i=0;i<n;i+=step,k++){ P_[k*3]=(pos[i*3]-(far?cx:0))*scale; P_[k*3+1]=(pos[i*3+1]-(far?cy:0))*scale; P_[k*3+2]=(pos[i*3+2]-(far?cz:0))*scale; if(C_){ C_[k*3]=col[i*3]; C_[k*3+1]=col[i*3+1]; C_[k*3+2]=col[i*3+2]; } }
+  const id='c'+M.nid++; CLOUD_DATA.set(id,{pos:P_,col:C_}); M.clouds.push(attachCloud({id,name,h:false})); STORE.put('clouds',{id,pos:P_,col:C_}).catch(()=>{});
+  return {count:m,decimated:step>1||!!data.decimated,recentered:far}; }
 
 
 /* ================= ZIP reading ================= */
@@ -2559,7 +2601,7 @@ function buildRenderScene(){
     const mesh=new THREE.Mesh(g,pbrMat(G.m)); mesh.castShadow=!(G.m&&G.m.kind==='glass'); mesh.receiveShadow=true; C.add(mesh); }
   if(R.edges){ const ep=[]; for(const e of M.E.values()){ if(!entVisible(e)||e.s) continue; const a=P(e.a),b=P(e.b); ep.push(a.x,a.y,a.z,b.x,b.y,b.z); } const eg=new THREE.BufferGeometry(); eg.setAttribute('position',new THREE.Float32BufferAttribute(ep,3)); C.add(new THREE.LineSegments(eg,new THREE.LineBasicMaterial({color:0x1b1d21,transparent:true,opacity:.55}))); }
   const s=activeSection(); if(s&&M.secShow.cut&&M.secShow.fill){ const res=sectionCut(s); const fg=new THREE.BufferGeometry(); const sh=new V3(...s.n).multiplyScalar(0.001); const fp=[]; for(let i=0;i<res.tris.length;i+=3) fp.push(res.tris[i]+sh.x,res.tris[i+1]+sh.y,res.tris[i+2]+sh.z); fg.setAttribute('position',new THREE.Float32BufferAttribute(fp,3)); fg.computeVertexNormals(); const fm=new THREE.Mesh(fg,new THREE.MeshStandardMaterial({color:0x2e3136,roughness:.9,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1})); C.add(fm); }
-  for(const c of M.clouds){ if(c.h) continue; const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(c.pos,3)); const mat=c.col?new THREE.PointsMaterial({size:2,sizeAttenuation:false,vertexColors:true}):new THREE.PointsMaterial({size:2,sizeAttenuation:false,color:0x9aa7b5}); if(c.col) g.setAttribute('color',new THREE.Float32BufferAttribute(c.col.map(x=>x/255),3)); C.add(new THREE.Points(g,mat)); }
+  for(const c of M.clouds){ if(c.h) continue; const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(c.pos,3)); const mat=c.col?new THREE.PointsMaterial({size:2,sizeAttenuation:false,vertexColors:true}):new THREE.PointsMaterial({size:2,sizeAttenuation:false,color:0x9aa7b5}); if(c.col) g.setAttribute('color',new THREE.Uint8BufferAttribute(c.col,3,true)); C.add(new THREE.Points(g,mat)); }
   const b=bbox(); if(b.isEmpty()) b.set(new V3(-4,-4,0),new V3(4,4,3)); R.box=b; const size=b.getSize(new V3()), c=b.getCenter(new V3()), rad=Math.max(size.length()/2,3);
   const gtex=R.env?makeTex('grass','#6f9447'):makeTex('concrete','#c9c5bb'); const gt=gtex.t.clone(); gt.needsUpdate=true; gt.repeat.set(220,220);
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(800,800),new THREE.MeshStandardMaterial({map:gt,bumpMap:gt,bumpScale:R.env?.6:.3,roughness:.95,color:0xffffff})); ground.position.set(c.x,c.y,Math.min(b.min.z,0)-0.004); ground.receiveShadow=true; C.add(ground);
@@ -2971,16 +3013,20 @@ const PANEL_FN={
     el.innerHTML=`<div class="row"><label>Tipo</label><select class="inp" id="clsSel" style="flex:1">${CLASSES.map(c=>`<option ${c===curClass?'selected':''}>${c}</option>`).join('')}</select><button class="btn sm" id="clsTool">Classificar</button></div>
     <div class="ptitle">Relatório</div>${rows.size?`<dl class="kv">${[...rows].map(([c,r])=>`<dt>${c}</dt><dd>${r.n} · ${fmtArea(r.a)}${r.v?' · '+fmtVol(r.v):''}</dd>`).join('')}</dl>`:'<p class="note">Nenhum grupo classificado.</p>'}<button class="btn sm" id="clsCsv" style="margin-top:8px">Exportar relatório CSV</button>`;
     $('#clsSel').onchange=e=>{ curClass=e.target.value; if(tool.id==='classify') setHint(tool.hint()); }; $('#clsTool').onclick=()=>setTool('classify'); $('#clsCsv').onclick=exportCSV; },
-  proj(el){ const lib=listLibrary();
-    el.innerHTML=`<div class="ptitle">Neste navegador</div><div class="list">${lib.map(p=>`<div class="li"><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span><small>${new Date(p.t).toLocaleDateString('pt-BR')}</small><button class="btn sm" data-lo="${p.id}">Abrir</button><button class="x" data-ld="${p.id}">✕</button></div>`).join('')||'<p class="note">Nenhum projeto salvo aqui.</p>'}</div><div class="btns" style="margin-top:6px"><button class="btn sm" id="libSave">Salvar projeto atual</button></div>
-    <div class="ptitle">Nuvem UNI</div><div id="cloudList"><p class="note">${DB&&UID?'Carregando…':'A nuvem fica disponível ao abrir o UNIPERFORMANCE pelo link publicado, com sua conta Claude. No arquivo HTML local, use “Salvar” para gerar o arquivo do projeto.'}</p></div>${DB&&UID?'<div class="btns" style="margin-top:6px"><button class="btn sm" id="clSave">Salvar na nuvem</button></div>':''}`;
-    el.querySelectorAll('[data-lo]').forEach(b=>b.onclick=()=>openFromLibrary(b.dataset.lo)); el.querySelectorAll('[data-ld]').forEach(b=>b.onclick=()=>{ deleteFromLibrary(b.dataset.ld); fillPanel('proj'); });
-    $('#libSave').onclick=saveToLibrary; if($('#clSave')) $('#clSave').onclick=saveToCloud; if(DB&&UID) refreshCloudList(); },
+  proj(el){ el.innerHTML=`<div class="ptitle">Armazenamento neste computador</div><div id="stMeter"><p class="note">Calculando…</p></div>
+    <div class="btns" style="margin-top:6px"><button class="btn sm primary" id="libSave">Salvar projeto atual</button><button class="btn sm" id="libPersist">Tornar permanente</button></div>
+    <label class="tog" style="margin-top:8px">Guardar cópia dos arquivos abertos <input type="checkbox" id="libKeep" ${keepFilesOn()?'checked':''}></label>
+    <div class="ptitle">Projetos</div><div id="libProj"><p class="note">Carregando…</p></div>
+    <div class="ptitle">Arquivos guardados</div><div id="libFiles"><p class="note">Carregando…</p></div>
+    <div class="ptitle">Nuvem UNI</div><div id="cloudMeter"></div><div id="cloudList"><p class="note">${cloudReady()?'Carregando…':'A nuvem funciona no link publicado, com sua conta Claude e permissão de edição. No arquivo HTML local, use o armazenamento deste computador.'}</p></div>${cloudReady()?'<div class="btns" style="margin-top:6px"><button class="btn sm" id="clSave">Enviar projeto atual</button><button class="btn sm" id="clFile">Enviar arquivo grande…</button></div>':''}`;
+    $('#libSave').onclick=saveToLibrary; $('#libPersist').onclick=askPersist; $('#libKeep').onchange=e=>{ try{ localStorage.setItem('uni3d.keepfiles',e.target.checked?'1':'0'); }catch(_){ } };
+    if($('#clSave')) $('#clSave').onclick=saveToCloud; if($('#clFile')) $('#clFile').onclick=()=>$('#cloudFileIn').click();
+    renderLocalLibrary(); if(cloudReady()) refreshCloudList(); },
   ai(el){ el.innerHTML=`<div class="chat" id="chat">${aiLog.map(m=>`<div class="msg ${m.r}">${esc(m.t)}</div>`).join('')||'<div class="msg s">Peça em português. Exemplos: “crie uma casa de 8 por 10 m com telhado”, “coloque 4 árvores na frente”, “pinte as paredes de tijolo”, “quanto mede a área construída?”</div>'}</div>
     <textarea class="inp" id="aiIn" placeholder="Descreva o que quer fazer no modelo…"></textarea><div class="btns" style="margin-top:6px"><button class="btn primary" id="aiSend">Enviar</button><button class="btn" id="aiStop">Parar</button><button class="btn" id="aiRender">Render IA…</button><button class="btn" id="aiDesc">Memorial</button></div>`;
     const ch=$('#chat'); ch.scrollTop=ch.scrollHeight; $('#aiSend').onclick=aiSend; $('#aiStop').onclick=()=>aiCtl&&aiCtl.abort(); $('#aiRender').onclick=aiRenderDialog; $('#aiDesc').onclick=aiDescribe;
     $('#aiIn').onkeydown=e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); aiSend(); } }; },
-  scan(el){ el.innerHTML=`<div class="list">${M.clouds.map(c=>`<div class="li"><input type="checkbox" data-cv="${c.id}" ${c.h?'':'checked'}><span class="nm">${esc(c.name)}</span><small>${(c.pos.length/3).toLocaleString('pt-BR')} pts</small><button class="x" data-cd="${c.id}">✕</button></div>`).join('')||'<p class="note">Importe arquivos .xyz, .txt, .csv, .pts ou .ply (ASCII) de escaneamento. Os pontos servem de referência e de encaixe para desenhar.</p>'}</div><div class="btns" style="margin-top:6px"><button class="btn sm" id="pcImp">Importar nuvem de pontos…</button></div>`;
+  scan(el){ el.innerHTML=`<div class="list">${M.clouds.map(c=>`<div class="li"><input type="checkbox" data-cv="${c.id}" ${c.h?'':'checked'}><span class="nm">${esc(c.name)}</span><small>${c.pos.length?(c.pos.length/3).toLocaleString('pt-BR')+' pts':'carregando…'}</small><button class="x" data-cd="${c.id}">✕</button></div>`).join('')||'<p class="note">Importe arquivos .xyz, .txt, .csv, .pts ou .ply (ASCII ou binário) de escaneamento, de até 1 GB. Os pontos servem de referência e de encaixe para desenhar.</p>'}</div><div class="btns" style="margin-top:6px"><button class="btn sm" id="pcImp">Importar nuvem de pontos…</button></div>`;
     el.querySelectorAll('[data-cv]').forEach(c=>c.onchange=()=>{ M.clouds.find(x=>x.id===c.dataset.cv).h=!c.checked; afterChange(); }); el.querySelectorAll('[data-cd]').forEach(b=>b.onclick=()=>{ pushUndo(); M.clouds=M.clouds.filter(x=>x.id!==b.dataset.cd); afterChange(); }); $('#pcImp').onclick=()=>$('#pcIn').click(); },
   ins(el){ const t=tool; const i=t.info||{d:'',s:[],k:[]}; el.innerHTML=`<div class="inst"><div class="ptitle">Ferramenta${t.key&&t.key!=='—'?' · tecla '+t.key:''}</div><h3>${esc(t.name)}</h3><p>${i.d}</p>${i.s.length?'<ol>'+i.s.map(x=>`<li>${x}</li>`).join('')+'</ol>':''}${i.k.length?'<div class="ptitle">Modificadores</div><div class="keys">'+i.k.map(([a,b])=>`<div><kbd>${a}</kbd><span>${b}</span></div>`).join('')+'</div>':''}</div>`; },
 };
@@ -3030,8 +3076,8 @@ function renderItems(el,items,level=1){ el.innerHTML=''; for(const it of items){
     el.appendChild(b); } }
 const tl=(id,extra={})=>({l:T[id].name,k:T[id].key&&T[id].key!=='—'?T[id].key:'',f:()=>setTool(id),...extra});
 const MENUS={
-  Arquivo:()=>[{l:'Novo',f:()=>act('new')},{l:'Abrir…',k:'Ctrl+O',f:()=>act('open')},{l:'Salvar',k:'Ctrl+S',f:saveProject},{l:'Salvar na biblioteca…',f:saveToLibrary},{l:'Biblioteca de projetos',f:()=>openPanel('proj')},'-',
-    {l:'Salvar como .skp (SketchUp)…',f:skpDialog},'-',{l:'Importar',sub:()=>[{l:'COLLADA (.dae, .kmz)…',f:()=>$('#daeIn').click()},{l:'Arquivo do SketchUp (.skp)…',f:()=>$('#skpIn').click()},{l:'Materiais (imagens, .skm, .zip)…',f:()=>$('#matIn').click()},{l:'Pasta de materiais do SketchUp…',f:()=>$('#matDir').click()},{l:'Modelo OBJ…',f:()=>$('#objIn').click()},{l:'Nuvem de pontos…',f:()=>$('#pcIn').click()}]},
+  Arquivo:()=>[{l:'Novo',f:()=>act('new')},{l:'Abrir…',k:'Ctrl+O',f:()=>act('open')},{l:'Salvar',k:'Ctrl+S',f:saveProject},{l:'Salvar na biblioteca…',f:saveToLibrary},{l:'Salvar na nuvem…',f:saveToCloud},{l:'Projetos, arquivos e nuvem',f:()=>openPanel('proj')},'-',
+    {l:'Salvar como .skp (SketchUp)…',f:skpDialog},'-',{l:'Importar',sub:()=>[{l:'COLLADA (.dae, .kmz)…',f:()=>$('#daeIn').click()},{l:'Arquivo do SketchUp (.skp)…',f:()=>$('#skpIn').click()},{l:'Materiais (imagens, .skm, .zip)…',f:()=>$('#matIn').click()},{l:'Pasta de materiais do SketchUp…',f:()=>$('#matDir').click()},{l:'Modelo OBJ…',f:()=>$('#objIn').click()},{l:'Nuvem de pontos (até 1 GB)…',f:()=>$('#pcIn').click()}]},
     {l:'Exportar',sub:()=>[{l:'COLLADA para SketchUp (.dae)',f:exportDAEZip},{l:'Modelo OBJ (.zip)',f:exportOBJ},{l:'Modelo STL (.zip)',f:exportSTL},{l:'Imagem da vista (PNG)',f:exportPNG},{l:'Relatório de classificação (CSV)',f:exportCSV},{l:'Imagem do render',f:()=>{ if(!R.on) enterRender(); setTimeout(renderShot,600); }},{l:'Panorama 360°',f:()=>{ if(!R.on) enterRender(); setTimeout(renderPanorama,600); }}]},'-',
     {l:'Imprimir…',k:'Ctrl+P',f:printView},{l:'Informações do modelo',f:modelInfo},'-',{l:'Carregar casa de exemplo',f:()=>{ pushUndo(); buildSample(); afterChange(); buildSceneTabs(); zoomExtents(); }}],
   Editar:()=>[{l:'Desfazer',k:'Ctrl+Z',f:undo,dis:!undoStack.length},{l:'Refazer',k:'Ctrl+Y',f:redo,dis:!redoStack.length},'-',{l:'Recortar',k:'Ctrl+X',f:()=>act('cut')},{l:'Copiar',k:'Ctrl+C',f:copySel},{l:'Colar',k:'Ctrl+V',f:()=>pasteClip(false),dis:!clip},{l:'Colar no local',f:()=>pasteClip(true),dis:!clip},{l:'Apagar',k:'Delete',f:deleteSelection},'-',
@@ -3125,28 +3171,31 @@ function showAbout(){ openModal(`<img src="data:image/jpeg;base64,/9j/4AAQSkZJRg
 function shareInfo(){ openModal(`<h2>Compartilhar com a equipe</h2><p>Na versão publicada no Claude, use o menu Compartilhar da página para dar acesso à equipe. Cada pessoa vê o mesmo aplicativo; os projetos salvos na Nuvem UNI ficam na conta de quem salvou.</p><p>Para enviar um projeto a alguém, use Arquivo ▸ Salvar e mande o arquivo .json; a pessoa abre com Arquivo ▸ Abrir.</p><div class="acts"><button class="btn primary" id="mOk">Entendi</button></div>`); $('#mOk').onclick=closeModal; }
 
 /* ================= Files ================= */
-let DL=null, SAMPLE=null, DB=null, USER=null, UID=null;
-(async()=>{ try{ if(window.claude&&window.claude.use){ const [d,s,db,u]=await Promise.all(['downloads','sample','db','user'].map(n=>window.claude.use(n).catch(()=>null))); DL=d; SAMPLE=s; DB=db; USER=u; if(USER){ try{ UID=await USER.id(); }catch(e){} } if(openPanels.has('proj')) fillPanel('proj'); } }catch(e){} })();
+let DL=null, SAMPLE=null, DB=null, USER=null, UID=null, ASSETS=null;
+(async()=>{ try{ if(window.claude&&window.claude.use){ const [d,s,db,u,as]=await Promise.all(['downloads','sample','db','user','assets'].map(n=>window.claude.use(n).catch(()=>null))); DL=d; SAMPLE=s; DB=db; USER=u; ASSETS=as; if(USER){ try{ UID=await USER.id(); }catch(e){} } if(openPanels.has('proj')) fillPanel('proj'); } }catch(e){} })();
 async function saveFile(name,data,mime){
   if(DL){ try{ await DL.save({filename:name,data}); toast('Arquivo salvo: '+name); }catch(err){ const c=err&&err.code; toast(c==='declined'?'Download cancelado':c==='rate_limited'?'Aguarde e tente de novo':c==='rejected_extension'?'Formato não permitido aqui':'Não foi possível salvar o arquivo aqui'); } return; }
   try{ const blob=data instanceof Blob?data:new Blob([data],{type:mime||'application/octet-stream'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); toast('Arquivo salvo: '+name); }catch(e){ toast('Não foi possível salvar o arquivo aqui'); }
 }
-function saveProject(){ saveFile('projeto-uni3d.json',serialize(),'application/json'); }
-$('#fileIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; if(/\.skp$/i.test(f.name)){ openSKPUI(f,'open'); return; } if(/\.(dae|kmz)$/i.test(f.name)){ importDAEUI(f); return; } try{ const txt=await f.text(); const d=JSON.parse(txt); if(!d.V||!d.F) throw 0; pushUndo(); ctx=0; loadModel(d); buildAxes(); sel.F.clear(); sel.E.clear(); sel.G.clear(); afterChange(); buildSceneTabs(); zoomExtents(); toast('Projeto aberto: '+f.name); }catch(err){ toast('Arquivo inválido. Abra um projeto .json do UNIPERFORMANCE.'); } };
+async function saveProject(){ toast('Preparando o arquivo…'); saveFile('projeto-uni3d.json',await serializeFull(),'application/json'); }
+$('#fileIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openAnyFile(f,'open'); };
 $('#objIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; try{ const txt=await f.text(); pushUndo(); importOBJ(txt,f.name); afterChange(); zoomExtents(); toast('OBJ importado como grupo'); }catch(err){ toast('Não consegui ler esse OBJ'); } };
-$('#pcIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; toast('Lendo nuvem de pontos…'); try{ const txt=await f.text(); const data=parsePointCloud(txt,f.name); if(data.pos.length<9) throw new Error('vazio');
-  let mn=Infinity,mxv=-Infinity; for(let i=0;i<data.pos.length;i+=3*Math.max(1,Math.floor(data.pos.length/30000))){ mn=Math.min(mn,data.pos[i],data.pos[i+1]); mxv=Math.max(mxv,data.pos[i],data.pos[i+1]); } const span=mxv-mn; const guess=span>2000?'mm':span>200?'cm':'m';
-  openModal(`<h2>Importar nuvem de pontos</h2><p>${(data.pos.length/3).toLocaleString('pt-BR')} pontos em ${esc(f.name)}. Em que unidade estão as coordenadas?</p><select class="inp" id="pcU"><option value="m" ${guess==='m'?'selected':''}>Metros</option><option value="cm" ${guess==='cm'?'selected':''}>Centímetros</option><option value="mm" ${guess==='mm'?'selected':''}>Milímetros</option></select><div class="acts"><button class="btn" id="mNo">Cancelar</button><button class="btn primary" id="mOk">Importar</button></div>`);
-  $('#mNo').onclick=closeModal; $('#mOk').onclick=()=>{ const u=$('#pcU').value; closeModal(); pushUndo(); const r=addPointCloud(data,f.name,1/UNITS[u].f); afterChange(); zoomExtents(); openPanel('scan'); toast(r.count.toLocaleString('pt-BR')+' pontos importados'+(r.decimated?' (reduzidos)':'')+(r.recentered?' e centralizados na origem':'')); };
-  }catch(err){ toast('Não consegui ler esse arquivo: '+(err.message||'formato desconhecido')); } };
-$('#skpIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openSKPUI(f,'import'); };
-$('#daeIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(f) importDAEUI(f); };
+$('#pcIn').onchange=e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openPointCloud(f,false); };
+async function openPointCloud(f,kept){ if(f.size>MAX_OPEN){ toast('Arquivo maior que 1 GB'); return; }
+  const ac=new AbortController(); const pg=progressModal('Lendo '+f.name+' ('+fmtBytes(f.size)+')',()=>ac.abort()); let data;
+  try{ data=await readPointCloudFile(f,fr=>pg.set(fr),ac.signal); if(data.pos.length<9) throw new Error('nenhum ponto encontrado'); }catch(err){ pg.close(); if(err.name!=='AbortError') toast('Não consegui ler esse arquivo: '+(err.message||'formato desconhecido')); return; }
+  pg.close(); if(!kept) keepOpenedFile(f);
+  let mn=Infinity,mxv=-Infinity; for(let i=0;i<data.pos.length;i+=3*Math.max(1,Math.floor(data.pos.length/90000))){ mn=Math.min(mn,data.pos[i],data.pos[i+1]); mxv=Math.max(mxv,data.pos[i],data.pos[i+1]); } const span=mxv-mn; const guess=span>2000?'mm':span>200?'cm':'m';
+  openModal(`<h2>Importar nuvem de pontos</h2><p>${(data.pos.length/3).toLocaleString('pt-BR')} pontos${data.decimated?' (amostrados de um arquivo maior)':''} em ${esc(f.name)}. Em que unidade estão as coordenadas?</p><select class="inp" id="pcU"><option value="m" ${guess==='m'?'selected':''}>Metros</option><option value="cm" ${guess==='cm'?'selected':''}>Centímetros</option><option value="mm" ${guess==='mm'?'selected':''}>Milímetros</option></select><div class="acts"><button class="btn" id="mNo">Cancelar</button><button class="btn primary" id="mOk">Importar</button></div>`);
+  $('#mNo').onclick=closeModal; $('#mOk').onclick=()=>{ const u=$('#pcU').value; closeModal(); pushUndo(); const r=addPointCloud(data,f.name,1/UNITS[u].f); afterChange(); zoomExtents(); openPanel('scan'); toast(r.count.toLocaleString('pt-BR')+' pontos importados'+(r.decimated?' (amostrados)':'')+(r.recentered?' e centralizados na origem':'')); }; }
+$('#skpIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openAnyFile(f,'import'); };
+$('#daeIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(f) openAnyFile(f); };
 $('#matIn').onchange=async e=>{ const fs=[...e.target.files]; e.target.value=''; if(fs.length) importMatsUI(fs); };
 async function importDAEUI(f){ toast('Importando '+f.name+'…'); pushUndo(); try{ const r=await importDAEFile(f); sel.F.clear(); sel.E.clear(); sel.G=new Set([r.gid]); afterChange(); zoomExtents(); toast(`Importado: ${r.faces} faces, ${r.groups} grupos, ${r.comps} componentes, ${r.mats} materiais`); }catch(err){ console.error(err); undo(); toast('Não consegui importar: '+(err.message||'formato desconhecido')); } }
 async function importMatsUI(fs){ if(fs.length>12||fs.some(f=>/\.zip$/i.test(f.name)&&f.size>3e6)){ importToLibrary(fs); return; } toast('Importando materiais…'); pushUndo(); const {out,fails}=await importMaterialFiles(fs); libPut(out.map(m=>({...m}))).then(refreshLib); if(!out.length){ undoStack.pop(); toast(fails.length?'Não consegui ler: '+fails.join(', '):'Nenhum material encontrado'); return; } curMat=out[out.length-1].id; afterChange(); openPanel('mat'); if(M.style.mode!=='textured'&&out.some(m=>m.img)) setStyle('textured'); setTool('paint'); toast(out.length+(out.length>1?' materiais importados':' material importado')+(fails.length?' · falhou: '+fails.join(', '):'')+'. Clique nas faces para pintar.'); }
 { const dz=$('#dropzone'); let dc=0; vpEl.addEventListener('dragenter',e=>{ if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')){ e.preventDefault(); dc++; dz.classList.add('show'); } }); vpEl.addEventListener('dragover',e=>{ if(e.dataTransfer&&[...e.dataTransfer.types].includes('Files')) e.preventDefault(); }); vpEl.addEventListener('dragleave',()=>{ dc=Math.max(0,dc-1); if(!dc) dz.classList.remove('show'); });
-  vpEl.addEventListener('drop',e=>{ e.preventDefault(); dc=0; dz.classList.remove('show'); if(R.on) return; const fs=[...e.dataTransfer.files]; const models=fs.filter(f=>/\.(dae|kmz)$/i.test(f.name)); const skps=fs.filter(f=>/\.skp$/i.test(f.name)); const mats=fs.filter(f=>!/\.(dae|kmz|json|obj|skp)$/i.test(f.name)); const json=fs.find(f=>/\.json$/i.test(f.name)); const obj=fs.find(f=>/\.obj$/i.test(f.name));
-    (async()=>{ for(const s of skps) await openSKPUI(s,skps.length>1?'import':'open'); for(const m of models) await importDAEUI(m); if(mats.length) await importMatsUI(mats); if(obj){ const dt=new DataTransfer(); dt.items.add(obj); $('#objIn').files=dt.files; $('#objIn').onchange({target:$('#objIn')}); } if(json){ const dt=new DataTransfer(); dt.items.add(json); $('#fileIn').files=dt.files; $('#fileIn').onchange({target:$('#fileIn')}); } })(); }); }
+  vpEl.addEventListener('drop',e=>{ e.preventDefault(); dc=0; dz.classList.remove('show'); if(R.on) return; const fs=[...e.dataTransfer.files]; const models=fs.filter(f=>/\.(dae|kmz)$/i.test(f.name)); const skps=fs.filter(f=>/\.skp$/i.test(f.name)); const mats=fs.filter(f=>!/\.(dae|kmz|json|obj|skp|xyz|pts|ply)$/i.test(f.name)); const json=fs.find(f=>/\.json$/i.test(f.name)); const obj=fs.find(f=>/\.obj$/i.test(f.name));
+    (async()=>{ for(const s of skps) await openAnyFile(s,skps.length>1?'import':'open'); for(const pc of fs.filter(f=>/\.(xyz|pts|ply)$/i.test(f.name))) await openAnyFile(pc); for(const m of models) await importDAEUI(m); if(mats.length) await importMatsUI(mats); if(obj){ const dt=new DataTransfer(); dt.items.add(obj); $('#objIn').files=dt.files; $('#objIn').onchange({target:$('#objIn')}); } if(json){ const dt=new DataTransfer(); dt.items.add(json); $('#fileIn').files=dt.files; $('#fileIn').onchange({target:$('#fileIn')}); } })(); }); }
 
 /* ---------- personal library UI ---------- */
 let libCache=null, libCat='';
@@ -3194,17 +3243,107 @@ function makeZip(files){ const enc=new TextEncoder(); const parts=[], central=[]
   return new Blob([...parts,...central,new Uint8Array(e.buffer)],{type:'application/zip'}); }
 
 /* ================= Project library (browser) & cloud ================= */
-function listLibrary(){ try{ return JSON.parse(localStorage.getItem('uni3d.lib')||'[]'); }catch(e){ return []; } }
-function saveToLibrary(){ promptModal('Salvar na biblioteca','Fica guardado neste navegador.',M.info.desc||'Projeto '+new Date().toLocaleDateString('pt-BR'),name=>{ if(!name) return; try{ const lib=listLibrary(); const id='p'+Date.now().toString(36); localStorage.setItem('uni3d.proj.'+id,serialize()); lib.unshift({id,name,t:Date.now()}); localStorage.setItem('uni3d.lib',JSON.stringify(lib)); toast('Salvo na biblioteca'); if(openPanels.has('proj')) fillPanel('proj'); }catch(e){ toast('Sem espaço no navegador. Use Arquivo ▸ Salvar.'); } }); }
-function openFromLibrary(id){ try{ const s=localStorage.getItem('uni3d.proj.'+id); if(!s) throw 0; pushUndo(); ctx=0; loadModel(s); buildAxes(); sel.F.clear(); sel.E.clear(); sel.G.clear(); afterChange(); buildSceneTabs(); zoomExtents(); toast('Projeto aberto'); }catch(e){ toast('Não encontrei esse projeto'); } }
-function deleteFromLibrary(id){ try{ localStorage.removeItem('uni3d.proj.'+id); localStorage.setItem('uni3d.lib',JSON.stringify(listLibrary().filter(p=>p.id!==id))); }catch(e){} }
-async function refreshCloudList(){ const box=$('#cloudList'); if(!box||!DB||!UID) return; try{ const snap=await DB.collection('data/users/'+UID).get(); const items=[]; snap.forEach?snap.forEach(d=>{ const v=d.data(); if(d.id.startsWith('proj_')&&!d.id.includes('_part_')) items.push({id:d.id,...v}); }):(snap.docs||[]).forEach(d=>{ const v=d.data(); if(d.id.startsWith('proj_')&&!d.id.includes('_part_')) items.push({id:d.id,...v}); });
-  items.sort((a,b)=>(b.t||0)-(a.t||0)); box.innerHTML=items.length?'<div class="list">'+items.map(p=>`<div class="li"><span class="nm">${esc(p.name)}</span><small>${new Date(p.t).toLocaleDateString('pt-BR')}</small><button class="btn sm" data-co="${p.id}">Abrir</button><button class="x" data-cd="${p.id}">✕</button></div>`).join('')+'</div>':'<p class="note">Nenhum projeto na nuvem ainda.</p>';
-  box.querySelectorAll('[data-co]').forEach(b=>b.onclick=()=>openFromCloud(b.dataset.co)); box.querySelectorAll('[data-cd]').forEach(b=>b.onclick=async()=>{ try{ const c=DB.collection('data/users/'+UID); const d=(await c.doc(b.dataset.cd).get()).data(); for(let i=0;i<(d?.parts||0);i++) await c.doc(b.dataset.cd+'_part_'+i).delete(); await c.doc(b.dataset.cd).delete(); refreshCloudList(); }catch(e){ toast('Não foi possível apagar'); } });
+/* ================= Storage: IndexedDB (local, GB-scale) + Nuvem UNI (artifact assets) ================= */
+const MAX_OPEN=1.1*1024**3; // arquivos de até ~1 GB
+function fmtBytes(b){ if(!isFinite(b)) return '—'; const u=['B','KB','MB','GB','TB']; let i=0; while(b>=1024&&i<u.length-1){ b/=1024; i++; } return nf(b,i<2?0:i===2?1:2)+' '+u[i]; }
+const STORE={ db:null,
+  open(){ if(this.db) return Promise.resolve(this.db); return new Promise((res,rej)=>{ let r; try{ r=indexedDB.open('uni3d-store',1); }catch(e){ rej(e); return; }
+    r.onupgradeneeded=()=>{ const d=r.result; for(const n of ['projects','files','kv','clouds']) if(!d.objectStoreNames.contains(n)) d.createObjectStore(n,{keyPath:'id'}); };
+    r.onsuccess=()=>{ this.db=r.result; res(this.db); }; r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('banco bloqueado')); }); },
+  async run(store,mode,fn){ const db=await this.open(); return new Promise((res,rej)=>{ const t=db.transaction(store,mode); const st=t.objectStore(store); let out; const q=fn(st); if(q) q.onsuccess=()=>{ out=q.result; }; t.oncomplete=()=>res(out); t.onerror=()=>rej(t.error); t.onabort=()=>rej(t.error||new Error('abortado')); }); },
+  put(store,v){ return this.run(store,'readwrite',st=>st.put(v)); },
+  get(store,id){ return this.run(store,'readonly',st=>st.get(id)); },
+  all(store){ return this.run(store,'readonly',st=>st.getAll()); },
+  del(store,id){ return this.run(store,'readwrite',st=>st.delete(id)); },
+};
+async function storageInfo(){ let usage=NaN,quota=NaN,persisted=false; try{ const e=await navigator.storage.estimate(); usage=e.usage; quota=e.quota; }catch(_){ } try{ persisted=await navigator.storage.persisted(); }catch(_){ } return {usage,quota,persisted}; }
+async function askPersist(){ let ok=false; try{ ok=await navigator.storage.persist(); }catch(_){ } toast(ok?'Armazenamento permanente ativado: o navegador não apaga seus projetos sozinho':'O navegador não concedeu o modo permanente agora; os dados continuam salvos'); renderLocalLibrary(); }
+const keepFilesOn=()=>{ try{ return localStorage.getItem('uni3d.keepfiles')!=='0'; }catch(_){ return true; } };
+async function gzipBlob(blob){ return new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob(); }
+const gzipString=str=>gzipBlob(new Blob([str]));
+async function gunzipBlob(blob){ return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).blob(); }
+function blobToB64(blob){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>{ const s=String(r.result); res(s.slice(s.indexOf(',')+1)); }; r.onerror=()=>rej(r.error); r.readAsDataURL(blob); }); }
+async function b64ToBytes(b64){ return new Uint8Array(await (await fetch('data:application/octet-stream;base64,'+b64.trim())).arrayBuffer()); }
+const bar=(f)=>`<div style="height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0"><div style="height:100%;width:${Math.min(100,Math.max(1,f*100)).toFixed(1)}%;background:${f>.9?'var(--accent)':'#2f6fe0'}"></div></div>`;
+
+/* ---------- full project (with point-cloud payloads) ---------- */
+async function serializeFull(){ const d=JSON.parse(serialize()); if(M.clouds.length){ d.cloudData={}; for(const c of M.clouds){ const D=CLOUD_DATA.get(c.id); if(!D) continue; d.cloudData[c.id]={pos:await blobToB64(new Blob([D.pos.buffer.slice(D.pos.byteOffset,D.pos.byteOffset+D.pos.byteLength)])),col:D.col?await blobToB64(new Blob([D.col])):null}; } } return JSON.stringify(d); }
+async function openProjectData(d,label){ if(!d||!d.V||!d.F) throw new Error('não é um projeto do UNIPERFORMANCE');
+  if(d.cloudData){ for(const [id,x] of Object.entries(d.cloudData)){ const pb=await b64ToBytes(x.pos); const pos=new Float32Array(pb.buffer,0,Math.floor(pb.byteLength/4)); const col=x.col?await b64ToBytes(x.col):null; CLOUD_DATA.set(id,{pos,col}); STORE.put('clouds',{id,pos,col}).catch(()=>{}); } delete d.cloudData; }
+  pushUndo(); ctx=0; loadModel(d); buildAxes(); sel.F.clear(); sel.E.clear(); sel.G.clear(); afterChange(); buildSceneTabs(); zoomExtents(); toast('Projeto aberto'+(label?': '+label:'')); }
+
+/* ---------- opening any supported file (size-checked, optionally kept locally) ---------- */
+async function openAnyFile(f,mode,opt={}){ if(f.size>MAX_OPEN){ toast('O arquivo tem '+fmtBytes(f.size)+'; o limite é 1 GB'); return; }
+  const n=f.name.toLowerCase();
+  if(/\.(json|uni3d)$/.test(n)){ const pg=f.size>20e6?progressModal('Abrindo '+f.name):null; try{ pg&&pg.set(.3,'Lendo '+fmtBytes(f.size)+'…'); const txt=await f.text(); pg&&pg.set(.7,'Montando o modelo…'); await new Promise(r=>setTimeout(r,20)); const d=JSON.parse(txt); pg&&pg.close(); await openProjectData(d,f.name); }catch(err){ pg&&pg.close(); toast(/Invalid string length|allocation/i.test(err&&err.message)?'O projeto é grande demais para o navegador abrir de uma vez':'Arquivo inválido. Abra um projeto .json do UNIPERFORMANCE.'); } return; }
+  if(!opt.noKeep) keepOpenedFile(f);
+  if(/\.skp$/.test(n)){ await openSKPUI(f,mode||'open'); return; }
+  if(/\.(dae|kmz|zip)$/.test(n)){ await importDAEUI(f); return; }
+  if(/\.(xyz|pts|ply|csv|txt)$/.test(n)){ await openPointCloud(f,true); return; }
+  toast('Formato não reconhecido: '+f.name); }
+async function keepOpenedFile(f){ if(!keepFilesOn()||f.size<1) return;
+  try{ const all=await STORE.all('files'); if(all.some(r=>r.name===f.name&&r.size===f.size)) return; const {usage,quota}=await storageInfo(); if(isFinite(quota)&&usage+f.size*1.05>quota){ toast('Sem espaço local para guardar a cópia de '+f.name); return; }
+    await STORE.put('files',{id:'f'+Date.now().toString(36)+Math.floor(Math.random()*1e4),name:f.name,size:f.size,t:Date.now(),blob:f}); if(f.size>50e6) toast('Cópia de '+f.name+' guardada neste computador'); if(openPanels.has('proj')) renderLocalLibrary(); }catch(e){ console.warn('keep file',e); } }
+
+/* ---------- local library UI ---------- */
+async function renderLocalLibrary(){ const m=$('#stMeter'), lp=$('#libProj'), lf=$('#libFiles'); if(!m) return;
+  const {usage,quota,persisted}=await storageInfo();
+  m.innerHTML=isFinite(quota)?`${bar(usage/quota)}<p class="note">${fmtBytes(usage)} usados de ${fmtBytes(quota)} disponíveis${persisted?' · permanente':''}. Arquivos de até 1 GB podem ser abertos e guardados.</p>`:'<p class="note">O navegador não informou o espaço disponível.</p>';
+  let projs=[],files=[]; try{ [projs,files]=await Promise.all([STORE.all('projects'),STORE.all('files')]); }catch(e){ lp.innerHTML='<p class="note">O armazenamento local está bloqueado neste navegador (janela anônima?).</p>'; lf.innerHTML=''; return; }
+  projs.sort((a,b)=>b.t-a.t); files.sort((a,b)=>b.t-a.t);
+  lp.innerHTML=projs.length?'<div class="list">'+projs.map(p=>`<div class="li"><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span><small>${fmtBytes(p.size)} · ${new Date(p.t).toLocaleDateString('pt-BR')}</small><button class="btn sm" data-lo="${p.id}">Abrir</button><button class="x" data-ld="${p.id}" title="Apagar">✕</button></div>`).join('')+'</div>':'<p class="note">Nenhum projeto salvo aqui.</p>';
+  lf.innerHTML=files.length?'<div class="list">'+files.map(p=>`<div class="li"><span class="nm" title="${esc(p.name)}">${esc(p.name)}</span><small>${fmtBytes(p.size)}</small><button class="btn sm" data-fo="${p.id}">Abrir</button><button class="btn sm" data-fs="${p.id}" title="Baixar">⤓</button><button class="x" data-fd="${p.id}" title="Apagar">✕</button></div>`).join('')+'</div>':'<p class="note">Os arquivos .skp, .dae e nuvens de pontos que você abrir ficam guardados aqui para reabrir sem procurar de novo.</p>';
+  lp.querySelectorAll('[data-lo]').forEach(b=>b.onclick=()=>openFromLibrary(b.dataset.lo));
+  lp.querySelectorAll('[data-ld]').forEach(b=>b.onclick=()=>confirmModal('Apagar este projeto?','Ele sai do armazenamento deste computador.','Apagar',async()=>{ await STORE.del('projects',b.dataset.ld); renderLocalLibrary(); }));
+  lf.querySelectorAll('[data-fo]').forEach(b=>b.onclick=async()=>{ const r=await STORE.get('files',b.dataset.fo); if(!r) return; openAnyFile(new File([r.blob],r.name),'open',{noKeep:true}); });
+  lf.querySelectorAll('[data-fs]').forEach(b=>b.onclick=async()=>{ const r=await STORE.get('files',b.dataset.fs); if(r) saveFile(r.name,r.blob); });
+  lf.querySelectorAll('[data-fd]').forEach(b=>b.onclick=()=>confirmModal('Apagar a cópia guardada?','O arquivo original no seu computador não é afetado.','Apagar',async()=>{ await STORE.del('files',b.dataset.fd); renderLocalLibrary(); })); }
+function saveToLibrary(){ promptModal('Salvar na biblioteca','Fica guardado neste computador, compactado, sem o limite de 5 MB do navegador.',M.info.desc||'Projeto '+new Date().toLocaleDateString('pt-BR'),async name=>{ if(!name) return;
+  try{ toast('Salvando…'); const blob=await gzipString(await serializeFull()); await STORE.put('projects',{id:'p'+Date.now().toString(36),name,t:Date.now(),size:blob.size,blob}); try{ await navigator.storage.persist(); }catch(_){ } toast('Salvo na biblioteca ('+fmtBytes(blob.size)+')'); if(openPanels.has('proj')) renderLocalLibrary(); }
+  catch(e){ console.error(e); toast(e&&e.name==='QuotaExceededError'?'Sem espaço neste computador. Apague itens antigos ou use a nuvem.':'Não foi possível salvar. Use Arquivo ▸ Salvar.'); } }); }
+async function openFromLibrary(id){ const pg=progressModal('Abrindo projeto'); try{ const r=await STORE.get('projects',id); if(!r) throw new Error('não encontrado'); pg.set(.4,'Descompactando…'); const txt=await (await gunzipBlob(r.blob)).text(); pg.set(.8,'Montando o modelo…'); const d=JSON.parse(txt); pg.close(); await openProjectData(d,r.name); }catch(e){ pg.close(); toast('Não consegui abrir esse projeto'); } }
+
+/* ---------- autosave restore ---------- */
+async function restoreAutosave(){ try{ const r=await STORE.get('kv','autosave');
+    if(!r){ const legacy=localStorage.getItem('uniperformance.autosave'); if(legacy){ await STORE.put('kv',{id:'autosave',v:legacy,t:Date.now()}); localStorage.removeItem('uniperformance.autosave'); } return; }
+    if(undoStack.length) return; const d=JSON.parse(r.v); for(const c of d.clouds||[]){ if(CLOUD_DATA.has(c.id)) continue; const x=await STORE.get('clouds',c.id); if(x) CLOUD_DATA.set(c.id,{pos:x.pos,col:x.col}); }
+    if(undoStack.length) return; ctx=0; loadModel(d); buildAxes(); sel.F.clear(); sel.E.clear(); sel.G.clear(); refreshSelSub(); cloudSnap=null; rebuild(); buildSceneTabs(); updatePanels(); if(M.F.size||M.clouds.length) zoomExtents();
+    try{ localStorage.removeItem('uniperformance.autosave'); }catch(_){ } }catch(e){ console.warn('autosave',e); } }
+
+/* ---------- Nuvem UNI: chunks of up to 14 MB (base64 text assets) + an index document in the private db path ---------- */
+const CHUNK=14<<20;
+const cloudReady=()=>!!(DB&&UID&&ASSETS);
+const cloudCol=()=>DB.collection('data/users/'+UID);
+async function uploadWithRetry(blob){ for(let a=0;;a++){ try{ return await ASSETS.upload(blob,{type:'text/plain'}); }catch(e){ if(a<2&&(e.code==='store_unavailable'||e.code==='rate_limited')){ await new Promise(r=>setTimeout(r,1500*(a+1))); continue; } throw e; } } }
+async function uploadChunks(blob,onProg,signal){ const ids=[]; try{ for(let o=0;o<blob.size;o+=CHUNK){ if(signal&&signal.aborted) throw new DOMException('cancelado','AbortError'); const b64=await blobToB64(blob.slice(o,o+CHUNK)); const up=await uploadWithRetry(new Blob([b64],{type:'text/plain'})); ids.push(up.id); onProg&&onProg(Math.min(1,(o+CHUNK)/blob.size)); } return ids; }
+  catch(e){ for(const id of ids) ASSETS.delete(id).catch(()=>{}); throw e; } }
+async function downloadChunks(ids,onProg){ const parts=[]; for(let i=0;i<ids.length;i++){ const r=await fetch('/_blob/'+ids[i]); if(!r.ok) throw new Error('parte '+(i+1)+' indisponível'); parts.push(await b64ToBytes(await r.text())); onProg&&onProg((i+1)/ids.length); } return new Blob(parts); }
+const cloudErr=e=>({quota_or_state:'O espaço da nuvem deste aplicativo está cheio. Apague itens antigos.',too_large:'Uma parte ficou grande demais para a nuvem.',not_granted:'Sem permissão para enviar à nuvem nesta página.',rate_limited:'Muitos envios seguidos; aguarde um pouco.',upstream_auth:'Recarregue a página e entre de novo na sua conta.',AbortError:'Envio cancelado.'})[e&&(e.code||e.name)]||'Não foi possível usar a nuvem agora.';
+async function cloudUsage(){ const box=$('#cloudMeter'); if(!box||!ASSETS) return; try{ const {usage}=await ASSETS.list(); box.innerHTML=usage.maxBytes?`${bar(usage.bytes/usage.maxBytes)}<p class="note">${fmtBytes(usage.bytes)} usados de ${fmtBytes(usage.maxBytes)} na nuvem.</p>`:`<p class="note">${fmtBytes(usage.bytes)} na nuvem.</p>`; }catch(e){ box.innerHTML=''; } }
+async function refreshCloudList(){ const box=$('#cloudList'); if(!box||!cloudReady()) return; cloudUsage();
+  try{ const snap=await cloudCol().get(); const items=(snap.docs||[]).map(d=>({id:d.id,...d.data()})).filter(v=>!v.id.includes('_part_')&&v.name); items.sort((a,b)=>(b.t||0)-(a.t||0));
+    box.innerHTML=items.length?'<div class="list">'+items.map(p=>`<div class="li"><span class="nm" title="${esc(p.name)}">${p.kind==='file'?'📄 ':''}${esc(p.name)}</span><small>${p.size?fmtBytes(p.size)+' · ':''}${new Date(p.t).toLocaleDateString('pt-BR')}</small><button class="btn sm" data-co="${esc(p.id)}">Abrir</button><button class="x" data-cd="${esc(p.id)}" title="Apagar">✕</button></div>`).join('')+'</div>':'<p class="note">Nada na nuvem ainda. Projetos e arquivos de até 1 GB podem ser enviados.</p>';
+    box.querySelectorAll('[data-co]').forEach(b=>b.onclick=()=>openFromCloud(b.dataset.co));
+    box.querySelectorAll('[data-cd]').forEach(b=>b.onclick=()=>confirmModal('Apagar da nuvem?','Some para todos os seus computadores. Não dá para desfazer.','Apagar',async()=>{ try{ const c=cloudCol(); const d=(await c.doc(b.dataset.cd).get()).data()||{};
+      if(Array.isArray(d.parts)) for(const id of d.parts) await ASSETS.delete(id).catch(()=>{}); else for(let i=0;i<(d.parts||0);i++) await c.doc(b.dataset.cd+'_part_'+i).delete(); await c.doc(b.dataset.cd).delete(); refreshCloudList(); toast('Apagado da nuvem'); }catch(e){ toast('Não foi possível apagar'); } }));
   }catch(e){ box.innerHTML='<p class="note">Não foi possível ler a nuvem agora.</p>'; } }
-function saveToCloud(){ if(!DB||!UID){ openModal(`<h2>Nuvem UNI</h2><p>A nuvem funciona quando o UNIPERFORMANCE é aberto pelo link publicado no Claude, com sua conta. No arquivo HTML local, use Arquivo ▸ Salvar ou a Biblioteca de projetos.</p><div class="acts"><button class="btn primary" id="mOk">Entendi</button></div>`); $('#mOk').onclick=closeModal; return; }
-  promptModal('Salvar na nuvem','O projeto fica na sua conta e abre em qualquer computador.',M.info.desc||'Projeto '+new Date().toLocaleDateString('pt-BR'),async name=>{ if(!name) return; try{ const s=serialize(); const CH=200000; const n=Math.ceil(s.length/CH); const id='proj_'+Date.now().toString(36); const c=DB.collection('data/users/'+UID); for(let i=0;i<n;i++) await c.doc(id+'_part_'+i).set({d:s.slice(i*CH,(i+1)*CH)}); await c.doc(id).set({name,t:Date.now(),parts:n}); toast('Salvo na nuvem'); refreshCloudList(); }catch(e){ toast('Não foi possível salvar na nuvem'); } }); }
-async function openFromCloud(id){ try{ const c=DB.collection('data/users/'+UID); const meta=(await c.doc(id).get()).data(); let s=''; for(let i=0;i<meta.parts;i++) s+=(await c.doc(id+'_part_'+i).get()).data().d; pushUndo(); ctx=0; loadModel(s); buildAxes(); sel.F.clear(); sel.E.clear(); sel.G.clear(); afterChange(); buildSceneTabs(); zoomExtents(); toast('Aberto da nuvem: '+meta.name); }catch(e){ toast('Não foi possível abrir da nuvem'); } }
+function cloudUnavailable(){ openModal(`<h2>Nuvem UNI</h2><p>A nuvem funciona quando o UNIPERFORMANCE é aberto pelo link publicado no Claude, com sua conta e permissão de edição. Enquanto isso, use Projetos ▸ Salvar projeto atual, que guarda neste computador.</p><div class="acts"><button class="btn primary" id="mOk">Entendi</button></div>`); $('#mOk').onclick=closeModal; }
+async function sendToCloud(blob,meta,title){ const ac=new AbortController(); const pg=progressModal(title,()=>ac.abort());
+  try{ try{ const {usage}=await ASSETS.list(); const need=blob.size*1.34; if(usage.maxBytes&&usage.bytes+need>usage.maxBytes){ pg.close(); toast('Faltam '+fmtBytes(usage.bytes+need-usage.maxBytes)+' na nuvem. Apague itens antigos.'); return; } }catch(_){ }
+    const ids=await uploadChunks(blob,f=>pg.set(f,'Enviando '+Math.round(f*100)+'% de '+fmtBytes(blob.size)),ac.signal);
+    await cloudCol().doc('c'+Date.now().toString(36)).set({...meta,t:Date.now(),size:blob.size,parts:ids}); pg.close(); toast('Salvo na nuvem'); refreshCloudList(); }
+  catch(e){ pg.close(); console.error(e); toast(cloudErr(e)); } }
+function saveToCloud(){ if(!cloudReady()){ cloudUnavailable(); return; }
+  promptModal('Salvar na nuvem','O projeto vai compactado para a sua conta e abre em qualquer computador.',M.info.desc||'Projeto '+new Date().toLocaleDateString('pt-BR'),async name=>{ if(!name) return; toast('Preparando…'); const blob=await gzipString(await serializeFull()); sendToCloud(blob,{kind:'proj',name,gz:true},'Enviando projeto'); }); }
+$('#cloudFileIn').onchange=async e=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; if(!cloudReady()){ cloudUnavailable(); return; } if(f.size>MAX_OPEN){ toast('O arquivo tem '+fmtBytes(f.size)+'; o limite é 1 GB'); return; }
+  const text=/\.(xyz|pts|csv|txt|dae|json|obj)$/i.test(f.name)||(/\.ply$/i.test(f.name)&&/format ascii/.test(await f.slice(0,512).text()));
+  let blob=f; if(text){ toast('Compactando '+f.name+'…'); try{ blob=await gzipBlob(f); }catch(_){ blob=f; } }
+  sendToCloud(blob,{kind:'file',name:f.name,gz:blob!==f,orig:f.size},'Enviando '+f.name); };
+async function openFromCloud(id){ const pg=progressModal('Baixando da nuvem'); try{ const c=cloudCol(); const meta=(await c.doc(id).get()).data(); if(!meta) throw new Error('item não encontrado');
+    if(!Array.isArray(meta.parts)){ let s=''; for(let i=0;i<meta.parts;i++) s+=(await c.doc(id+'_part_'+i).get()).data().d; pg.close(); await openProjectData(JSON.parse(s),meta.name); return; }
+    let blob=await downloadChunks(meta.parts,f=>pg.set(f*.85,'Baixando '+Math.round(f*100)+'%')); if(meta.gz){ pg.set(.9,'Descompactando…'); blob=await gunzipBlob(blob); }
+    pg.close(); if(meta.kind==='file') await openAnyFile(new File([blob],meta.name),'open'); else await openProjectData(JSON.parse(await blob.text()),meta.name); }
+  catch(e){ pg.close(); console.error(e); toast('Não foi possível abrir da nuvem: '+(e.message||'erro')); } }
 
 /* ================= AI ================= */
 let aiLog=[], aiCtl=null;
@@ -3356,12 +3495,12 @@ function buildSample(){
 /* ================= Boot ================= */
 for(const el of [document.getElementById('app'),document.querySelector('.main'),vpEl]) el.addEventListener('scroll',()=>{ if(el.scrollLeft||el.scrollTop){ el.scrollLeft=0; el.scrollTop=0; } });
 let loaded=false; try{ const s=localStorage.getItem('uniperformance.autosave'); if(s){ const d=JSON.parse(s); if(d.ver===2){ loadModel(d); loaded=M.F.size>0||M.E.size>0||M.Gr.size>0; } } }catch(e){ loaded=false; }
-/* modelo de exemplo removido: inicia vazio */
+restoreAutosave();
 buildAxes(); tool=T.select; tool.id='select'; buildToolbars(); renderTray(); resize(); setTool('select'); refreshSelSub(); rebuild(); buildSceneTabs(); setView('iso');
 
 requestAnimationFrame(loop);
 setTimeout(()=>{ $('#splash').classList.add('hide'); setTimeout(()=>$('#splash').remove(),600); },1300);
-window.__uni={buildSKPBytes,openSKPUI,genTex,makeTex,texThumb,defaultMats,openPanel,setStyle,libAll,importToLibrary,refreshLib,exportDAE,importDAEFile,importMaterialFiles,unzip,dbg:()=>({cam:camAnim?1:0,rec:!!rec,state:rec&&rec.mr.state,pos:persp.position.toArray().map(v=>+v.toFixed(2))}),V3,M4,THREE,pathFromSelection,ensureVertexP:p=>ensureVertex(p),refreshSelSub,rebuild,addPointCloud,terrainFromPoints,text3DSpec,sectionCut,M,T,R,setTool,pushPull,serialize,enterRender,exitRender,undo,redo,zoomExtents,setView,afterChange,makePolygonFace,addSegment,ensureVertex,deleteEdge,screen:(c)=>toScreen(new V3(...c)),act,sel,enterGroup,closeGroup,solidOp,followMe,intersectFaces,libSpec,createInstance,tr,get ctx(){ return ctx; },openPanel,buildSample,isSolid,renderPanorama,startVideo};
+window.__uni={STORE,readPointCloudFile,serializeFull,openProjectData,CLOUD_DATA,buildSKPBytes,openSKPUI,genTex,makeTex,texThumb,defaultMats,openPanel,setStyle,libAll,importToLibrary,refreshLib,exportDAE,importDAEFile,importMaterialFiles,unzip,dbg:()=>({cam:camAnim?1:0,rec:!!rec,state:rec&&rec.mr.state,pos:persp.position.toArray().map(v=>+v.toFixed(2))}),V3,M4,THREE,pathFromSelection,ensureVertexP:p=>ensureVertex(p),refreshSelSub,rebuild,addPointCloud,terrainFromPoints,text3DSpec,sectionCut,M,T,R,setTool,pushPull,serialize,enterRender,exitRender,undo,redo,zoomExtents,setView,afterChange,makePolygonFace,addSegment,ensureVertex,deleteEdge,screen:(c)=>toScreen(new V3(...c)),act,sel,enterGroup,closeGroup,solidOp,followMe,intersectFaces,libSpec,createInstance,tr,get ctx(){ return ctx; },openPanel,buildSample,isSolid,renderPanorama,startVideo};
 
 </script>
 
