@@ -103,6 +103,10 @@ button{font:inherit;color:inherit}
 #droneHud #dhRec.on{background:#fff;color:#c62828}
 #droneHud .dh-k{margin-top:7px;color:#9aa1a9;font-size:11px}
 body.droning .walkhint{display:none!important}
+#recoverBar{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;background:rgba(22,24,28,.88);color:#f2f3f5;padding:7px 8px 7px 14px;border-radius:8px;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.2);max-width:calc(100% - 24px)}
+#recoverBar button{background:#2c3036;color:#fff;border:1px solid #4a5058;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:12.5px;white-space:nowrap}
+#recoverBar #rcYes{background:#d8333a;border-color:#d8333a}
+#recoverBar #rcNo{background:none;border:0;color:#bfc4ca;padding:5px 6px}
 #recbadge{position:absolute;right:12px;top:10px;background:#c62828;color:#fff;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;display:none;z-index:6}
 .tray{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
 .trayhead{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);flex:none}
@@ -1640,7 +1644,7 @@ function validateSel(){ for(const f of [...sel.F]) if(!M.F.has(f)) sel.F.delete(
 function undo(){ if(!undoStack.length){ toast('Nada para desfazer'); return; } tool.cancel&&tool.cancel(); redoStack.push(serialize()); loadModel(undoStack.pop()); validateSel(); afterChange(); toast('Desfeito'); }
 function redo(){ if(!redoStack.length){ toast('Nada para refazer'); return; } tool.cancel&&tool.cancel(); undoStack.push(serialize()); loadModel(redoStack.pop()); validateSel(); afterChange(); toast('Refeito'); }
 let saveTimer=null;
-function afterChange(){ purge(); validateSel(); cloudSnap=null; rebuild(); updateCtxBar(); updatePanels(); clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ STORE.put('kv',{id:'autosave',v:serialize(),t:Date.now()}).catch(()=>{}); },900); }
+function afterChange(){ purge(); validateSel(); cloudSnap=null; rebuild(); updateCtxBar(); updatePanels(); hideRecover(); clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ STORE.put('kv',{id:'autosave',v:serialize(),t:Date.now()}).catch(()=>{}); },900); }
 
 /* ================= Group context ================= */
 function enterGroup(gid){ const G=M.Gr.get(gid); if(!G) return; if(G.lock){ toast('Grupo travado. Destrave pelo menu de contexto.'); return; } if(G.px){ pushUndo(); pxMaterialize(gid); } ctx=gid; sel.F.clear(); sel.E.clear(); sel.G.clear(); validateSel(); rebuild(); updateCtxBar(); updatePanels(); toast('Editando '+groupName(G)); }
@@ -4007,7 +4011,7 @@ const MENUS={
   Arquivo:()=>[{l:'Novo',f:()=>act('new')},{l:'Abrir…',k:'Ctrl+O',f:()=>act('open')},{l:'Salvar',k:'Ctrl+S',f:saveProject},{l:'Salvar na biblioteca…',f:saveToLibrary},{l:'Salvar na nuvem…',f:saveToCloud},{l:'Projetos, arquivos e nuvem',f:()=>openPanel('proj')},'-',
     {l:'Salvar como .skp (SketchUp)…',f:skpDialog},'-',{l:'Importar',sub:()=>[{l:'COLLADA (.dae, .kmz)…',f:()=>$('#daeIn').click()},{l:'Arquivo do SketchUp (.skp)…',f:()=>$('#skpIn').click()},{l:'Materiais (imagens, .skm, .zip)…',f:()=>$('#matIn').click()},{l:'Pasta de materiais do SketchUp…',f:()=>$('#matDir').click()},{l:'Modelo OBJ…',f:()=>$('#objIn').click()},{l:'Nuvem de pontos (até 1 GB)…',f:()=>$('#pcIn').click()}]},
     {l:'Exportar',sub:()=>[{l:'COLLADA para SketchUp (.dae)',f:exportDAEZip},{l:'Modelo OBJ (.zip)',f:exportOBJ},{l:'Modelo STL (.zip)',f:exportSTL},{l:'Imagem da vista (PNG)',f:exportPNG},{l:'Relatório de classificação (CSV)',f:exportCSV},{l:'Imagem do render',f:()=>{ if(!R.on) enterRender(); setTimeout(renderShot,600); }},{l:'Panorama 360°',f:()=>{ if(!R.on) enterRender(); setTimeout(renderPanorama,600); }}]},'-',
-    {l:'Imprimir…',k:'Ctrl+P',f:printView},{l:'Informações do modelo',f:modelInfo},'-',{l:'Carregar casa de exemplo',f:()=>{ pushUndo(); buildSample(); afterChange(); buildSceneTabs(); zoomExtents(); }}],
+    {l:'Imprimir…',k:'Ctrl+P',f:printView},{l:'Informações do modelo',f:modelInfo},'-',{l:'Recuperar último desenho',f:()=>recoverAutosave()},{l:'Carregar casa de exemplo',f:()=>{ pushUndo(); buildSample(); afterChange(); buildSceneTabs(); zoomExtents(); }}],
   Editar:()=>[{l:'Desfazer',k:'Ctrl+Z',f:undo,dis:!undoStack.length},{l:'Refazer',k:'Ctrl+Y',f:redo,dis:!redoStack.length},'-',{l:'Recortar',k:'Ctrl+X',f:()=>act('cut')},{l:'Copiar',k:'Ctrl+C',f:copySel},{l:'Colar',k:'Ctrl+V',f:()=>pasteClip(false),dis:!clip},{l:'Colar no local',f:()=>pasteClip(true),dis:!clip},{l:'Apagar',k:'Delete',f:deleteSelection},'-',
     {l:'Selecionar tudo',k:'Ctrl+A',f:selectAll},{l:'Selecionar nada',k:'Ctrl+T',f:clearSel},'-',{l:'Ocultar',f:hideSelection},{l:'Mostrar tudo',f:unhideAll},{l:'Travar',f:()=>lockSel(true)},{l:'Destravar todos',f:()=>lockSel(false)},'-',
     {l:'Criar grupo',k:'Ctrl+G',f:()=>act('makegroup')},{l:'Criar componente…',k:'G',f:()=>act('makecomp')},{l:'Explodir',f:()=>act('explode')},{l:ctx?'Fechar grupo':'Editar grupo',f:()=>ctx?closeGroup():(sel.G.size===1&&enterGroup([...sel.G][0]))},'-',
@@ -4234,6 +4238,23 @@ function saveToLibrary(){ promptModal('Salvar na biblioteca','Fica guardado nest
   catch(e){ console.error(e); toast(e&&e.name==='QuotaExceededError'?'Sem espaço neste computador. Apague itens antigos ou use a nuvem.':'Não foi possível salvar. Use Arquivo ▸ Salvar.'); } }); }
 async function openFromLibrary(id){ const pg=progressModal('Abrindo projeto'); try{ const r=await STORE.get('projects',id); if(!r) throw new Error('não encontrado'); pg.set(.4,'Descompactando…'); const txt=await (await gunzipBlob(r.blob)).text(); pg.set(.8,'Montando o modelo…'); const d=JSON.parse(txt); pg.close(); await openProjectData(d,r.name); }catch(e){ pg.close(); toast('Não consegui abrir esse projeto'); } }
 
+/* ---------- abre sempre vazio; o último desenho fica disponível para recuperar ---------- */
+async function autosaveData(){ let r=null; try{ r=await STORE.get('kv','autosave_prev'); }catch(e){} if(!r) try{ r=await STORE.get('kv','autosave'); }catch(e){}
+  if(!r){ try{ const legacy=localStorage.getItem('uniperformance.autosave'); if(legacy) r={v:legacy,t:Date.now()}; }catch(e){} } return r; }
+const hasDrawing=d=>!!d&&((d.F&&d.F.length)||(d.E&&d.E.length)||(d.Gr&&d.Gr.length)||(d.clouds&&d.clouds.length));
+async function offerAutosave(){ try{ let r=null; try{ r=await STORE.get('kv','autosave'); }catch(e){}
+    if(!r){ try{ const legacy=localStorage.getItem('uniperformance.autosave'); if(legacy) r={v:legacy,t:Date.now()}; }catch(e){} }
+    if(!r) return; const d=JSON.parse(r.v); if(!hasDrawing(d)) return;
+    await STORE.put('kv',{id:'autosave_prev',v:r.v,t:r.t||Date.now()}).catch(()=>{}); try{ localStorage.removeItem('uniperformance.autosave'); }catch(_){}
+    if(M.F.size||M.E.size||M.Gr.size||undoStack.length) return;
+    const when=r.t?new Date(r.t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
+    const bar=document.createElement('div'); bar.id='recoverBar'; bar.innerHTML=`<span>Começando com a área vazia.${when?' Último desenho: '+when+'.':''}</span><button id="rcYes">Recuperar último desenho</button><button id="rcNo" title="Fechar">✕</button>`;
+    vpEl.appendChild(bar); $('#rcYes').onclick=()=>recoverAutosave(); $('#rcNo').onclick=hideRecover; setTimeout(hideRecover,30000);
+  }catch(e){ console.warn('autosave',e); } }
+function hideRecover(){ const b=document.getElementById('recoverBar'); if(b) b.remove(); }
+async function recoverAutosave(){ hideRecover(); const r=await autosaveData(); if(!r){ toast('Não há desenho salvo para recuperar'); return; } let d; try{ d=JSON.parse(r.v); }catch(e){ toast('O desenho salvo está danificado'); return; } if(!hasDrawing(d)){ toast('Não há desenho salvo para recuperar'); return; }
+  for(const c of d.clouds||[]){ if(CLOUD_DATA.has(c.id)) continue; try{ const x=await STORE.get('clouds',c.id); if(x) CLOUD_DATA.set(c.id,{pos:x.pos,col:x.col}); }catch(e){} }
+  pushUndo(); await pxRestore(d); ctx=0; loadModel(d); buildAxes(); sel.F.clear(); sel.E.clear(); sel.G.clear(); refreshSelSub(); cloudSnap=null; afterChange(); buildSceneTabs(); updatePanels(); zoomExtents(); toast('Último desenho recuperado'); }
 /* ---------- autosave restore ---------- */
 async function restoreAutosave(){ try{ const r=await STORE.get('kv','autosave');
     if(!r){ const legacy=localStorage.getItem('uniperformance.autosave'); if(legacy){ await STORE.put('kv',{id:'autosave',v:legacy,t:Date.now()}); localStorage.removeItem('uniperformance.autosave'); } return; }
@@ -4425,8 +4446,8 @@ function buildSample(){
 
 /* ================= Boot ================= */
 for(const el of [document.getElementById('app'),document.querySelector('.main'),vpEl]) el.addEventListener('scroll',()=>{ if(el.scrollLeft||el.scrollTop){ el.scrollLeft=0; el.scrollTop=0; } });
-let loaded=false; try{ const s=localStorage.getItem('uniperformance.autosave'); if(s){ const d=JSON.parse(s); if(d.ver===2){ loadModel(d); loaded=M.F.size>0||M.E.size>0||M.Gr.size>0; } } }catch(e){ loaded=false; }
-restoreAutosave();
+let loaded=false;
+offerAutosave();
 buildAxes(); tool=T.select; tool.id='select'; buildToolbars(); renderTray(); resize(); setTool('select'); refreshSelSub(); rebuild(); buildSceneTabs(); setView('iso');
 
 requestAnimationFrame(loop);
