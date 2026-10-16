@@ -85,6 +85,24 @@ button{font:inherit;color:inherit}
 .vp-note{position:absolute;left:12px;bottom:10px;font-size:12px;color:#4b545e;background:rgba(255,255,255,.75);padding:3px 8px;border-radius:4px;pointer-events:none;max-width:calc(100% - 24px)}
 .walkhint{position:absolute;left:50%;top:36px;transform:translateX(-50%);background:rgba(15,18,22,.66);color:#f2f2f2;padding:6px 12px;border-radius:6px;font-size:12.5px;pointer-events:none;white-space:nowrap;display:none;max-width:calc(100% - 24px);overflow:hidden;text-overflow:ellipsis;z-index:4}
 .viewport.render .walkhint{display:block}
+#droneHud{position:absolute;left:12px;bottom:12px;z-index:7;display:none;width:258px;background:rgba(18,20,24,.82);color:#f2f3f5;border-radius:10px;padding:10px 12px;font-size:12.5px;backdrop-filter:blur(6px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+#droneHud .dh-t{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13.5px;margin-bottom:8px}
+#droneHud .dh-t svg{width:20px;height:20px;fill:none;stroke:#ff6b6b;stroke-width:1.6}
+#droneHud .dh-x{margin-left:auto;background:none;border:0;color:#cfd3d8;cursor:pointer;font-size:14px}
+#droneHud .dh-r{display:flex;align-items:center;gap:6px;margin:6px 0}
+#droneHud .dh-r>span,#droneHud label.dh-r{color:#cfd3d8}
+#droneHud .dh-r>span{width:72px}
+#droneHud .dh-r b{min-width:66px;text-align:center;font-weight:600;color:#fff;font-family:var(--f-mono)}
+#droneHud select{flex:1;min-width:0;background:#2a2d33;color:#fff;border:1px solid #444a52;border-radius:5px;padding:3px}
+#droneHud input[type=range]{flex:1}
+#droneHud button{background:#2a2d33;color:#fff;border:1px solid #444a52;border-radius:6px;cursor:pointer;font-size:13px}
+#droneHud .dh-r button{width:30px;height:26px;font-size:16px;line-height:1}
+#droneHud .dh-b{display:flex;gap:6px;margin-top:8px}
+#droneHud .dh-b button{flex:1;padding:6px 4px}
+#droneHud #dhRec{background:#c62828;border-color:#c62828}
+#droneHud #dhRec.on{background:#fff;color:#c62828}
+#droneHud .dh-k{margin-top:7px;color:#9aa1a9;font-size:11px}
+body.droning .walkhint{display:none!important}
 #recbadge{position:absolute;right:12px;top:10px;background:#c62828;color:#fff;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:600;display:none;z-index:6}
 .tray{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;min-width:0}
 .trayhead{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);flex:none}
@@ -3454,7 +3472,7 @@ function buildRenderScene(){
     const pvT=makeTex('tile','#c8c2b6').t.clone(); pvT.needsUpdate=true; pvT.repeat.set((size.x+3)/1.2,(size.y+3)/1.2); const pv=new THREE.Mesh(new THREE.PlaneGeometry(size.x+3,size.y+3),new THREE.MeshStandardMaterial({map:pvT,roughness:.7})); pv.position.set(c.x,c.y,Math.min(b.min.z,0)-0.002); pv.receiveShadow=true; C.add(pv); }
   if(bigEnv) ground.position.z=Math.min(b.min.z,0)-(EK==='city'?.35:.25);
   if(bigEnv){ try{ envE=buildEnvironment(C,b,EK,R.life!==false).E; }catch(err){ console.error('entorno',err); } }
-  R.scene.fog=bigEnv&&envE?new THREE.Fog(0xcbd4dd,envE*1.05,envE*4):null;
+  R.envE=bigEnv?envE:0; R.scene.fog=bigEnv&&envE?new THREE.Fog(0xcbd4dd,envE*1.05,envE*4):null;
   const sh=R.sun.shadow.camera; const ext=bigEnv?Math.max(60,rad+45):rad+(R.env?rad+8:4); sh.left=-ext; sh.right=ext; sh.top=ext; sh.bottom=-ext; sh.near=.5; sh.far=ext*4+200; sh.updateProjectionMatrix();
   const ms=R.quality==='high'?4096:2048; if(R.sun.shadow.mapSize.x!==ms){ R.sun.shadow.mapSize.set(ms,ms); if(R.sun.shadow.map){ R.sun.shadow.map.dispose(); R.sun.shadow.map=null; } }
   updateSun();
@@ -3481,7 +3499,7 @@ function enterRender(){
   renderer.toneMapping=RENDER_TM; renderer.setClearColor(0x000000,1);
   applyRenderToggles(); buildRenderScene(); resize(); setHint('Render: arraste para olhar, W A S D caminham, roda aproxima. Esc volta à modelagem.'); vcbEl.disabled=true; updateCtxBar(); renderTray(); requestRender();
 }
-function exitRender(){ if(!R.on) return; stopVideo(true); R.on=false; R.keys.clear(); document.body.classList.remove('rendering'); vpEl.classList.remove('render'); $('#renderLbl').textContent='Renderizar'; renderer.toneMapping=THREE.NoToneMapping; renderer.toneMappingExposure=1; renderer.setClearColor(0x000000,0); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); resize();
+function exitRender(){ if(!R.on) return; stopDrone(); stopVideo(true); R.on=false; R.keys.clear(); document.body.classList.remove('rendering'); vpEl.classList.remove('render'); $('#renderLbl').textContent='Renderizar'; renderer.toneMapping=THREE.NoToneMapping; renderer.toneMappingExposure=1; renderer.setClearColor(0x000000,0); renderer.setPixelRatio(Math.min(devicePixelRatio,2)); resize();
   if(R.prevView){ persp.fov=R.prevView.fov; syncCams(); if(!R.prevView.persp) setProjection(false,true); } setTool(tool.id||'select'); updateCtxBar(); renderTray(); requestRender(); }
 function applyRenderToggles(){ if(!R.gtao) return; R.gtao.enabled=R.ao; R.bloom.enabled=R.bloomOn!==false; const pr=R.quality==='high'?Math.min(2,Math.max(devicePixelRatio,1.5)):1; renderer.setPixelRatio(pr); R.composer.setPixelRatio(pr); resize(); }
 let walkRAF=null, walkT=0;
@@ -3525,7 +3543,59 @@ function renderNow(){
   else renderer.render(scene,cam());
   placeLabels();
 }
-function loop(now){ const anim=stepCamAnim(now); if(needsRender||anim||rec){ needsRender=false; renderNow(); } requestAnimationFrame(loop); }
+/* ================= Filmagem drone: voo automático sobre toda a área ================= */
+const DR={on:false,paused:false,path:'varredura',speed:10,alt:40,altCur:40,pitch:32,u:0,last:0,curve:null,len:1,fwd:null,c:null,z0:0,hT:0,rec:null};
+const DRONE_PATHS=[['varredura','Varredura (toda a área)'],['orbita','Órbita em volta'],['oito','Oito sobre a área'],['travessia','Travessias em diagonal']];
+function droneArea(){ const b=bbox(); if(b.isEmpty()) b.set(new V3(-10,-10,0),new V3(10,10,3)); const c=b.getCenter(new V3()), s=b.getSize(new V3()); const z0=Math.min(b.min.z,0);
+  let ax=s.x/2+Math.max(10,s.x*.25), ay=s.y/2+Math.max(10,s.y*.25); if(R.env&&R.envE){ const e=Math.min(R.envE*.6,Math.max(s.x,s.y)/2+90); ax=Math.max(ax,e); ay=Math.max(ay,e); }
+  return {c,s,z0,ax,ay,h:s.z}; }
+function droneBuild(){ const A=droneArea(); DR.c=A.c; DR.z0=A.z0; DR.hT=A.z0+Math.max(1,A.h*.35); const {c,ax,ay}=A, P=[]; const p=(x,y)=>P.push(new V3(c.x+x,c.y+y,0));
+  if(DR.path==='orbita'){ const R_=Math.max(ax,ay)*1.05; for(let i=0;i<24;i++){ const a=i/24*Math.PI*2; p(Math.cos(a)*R_,Math.sin(a)*R_); } }
+  else if(DR.path==='oito'){ for(let i=0;i<32;i++){ const t=i/32*Math.PI*2; p(Math.sin(t)*ax*.9,Math.sin(t)*Math.cos(t)*ay*1.6); } }
+  else if(DR.path==='travessia'){ p(-ax,-ay); p(ax,ay); p(ax*1.15,ay*.2); p(ax,-ay); p(-ax,ay); p(-ax*1.15,-ay*.2); }
+  else { const sp=Math.max(12,Math.min(DR.alt*.9,60)), n=Math.max(2,Math.min(9,Math.round(2*ay/sp)+1));
+    for(let i=0;i<n;i++){ const y=-ay+2*ay*i/(n-1), dir=i%2===0; p(dir?-ax:ax,y); p(dir?ax:-ax,y); if(i<n-1){ const yn=-ay+2*ay*(i+1)/(n-1), r=(yn-y)/2; p(dir?ax+r:-ax-r,(y+yn)/2); } }
+    const r=Math.min(sp,ay/(n-1)); if((n-1)%2===0){ p(ax+r,ay+r); p(0,ay+2*r); } else p(-ax-r,ay+r); p(-ax-2*r,0); p(-ax-r,-ay-r); }
+  DR.curve=new THREE.CatmullRomCurve3(P,true,'centripetal'); DR.curve.arcLengthDivisions=Math.min(4000,P.length*60); DR.len=Math.max(1,DR.curve.getLength()); DR.u=0; DR.fwd=null; }
+function droneHud(){ let el=$('#droneHud'); if(!el){ el=document.createElement('div'); el.id='droneHud'; $('#recbadge').after(el); }
+  const kmh=v=>Math.round(v*3.6);
+  el.innerHTML=`<div class="dh-t"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/><circle cx="5" cy="5" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/></svg>Filmagem drone<button class="dh-x" id="dhX" title="Sair (Esc)">✕</button></div>
+   <label class="dh-r">Trajeto<select id="dhPath">${DRONE_PATHS.map(([v,l])=>`<option value="${v}" ${DR.path===v?'selected':''}>${l}</option>`).join('')}</select></label>
+   <div class="dh-r"><span>Velocidade</span><button id="dhSm">−</button><b id="dhSv">${kmh(DR.speed)} km/h</b><button id="dhSp">+</button></div>
+   <div class="dh-r"><span>Altura</span><button id="dhAm">−</button><b id="dhAv">${Math.round(DR.alt)} m</b><button id="dhAp">+</button></div>
+   <label class="dh-r">Câmera<input type="range" id="dhP" min="5" max="85" value="${DR.pitch}" ${DR.path==='orbita'?'disabled':''}><b id="dhPv">${DR.pitch}°</b></label>
+   <div class="dh-b"><button id="dhPlay">${DR.paused?'▶ Continuar':'❚❚ Pausar'}</button><button id="dhRec" class="${DR.rec?'on':''}">${DR.rec?'■ Parar e salvar':'● Gravar vídeo'}</button></div>
+   <div class="dh-k">↑ ↓ altura · + − velocidade · espaço pausa · Esc sai</div>`;
+  $('#dhX').onclick=stopDrone; $('#dhPath').onchange=e=>{ DR.path=e.target.value; droneBuild(); droneHud(); };
+  $('#dhSm').onclick=()=>droneSpeed(-1); $('#dhSp').onclick=()=>droneSpeed(1); $('#dhAm').onclick=()=>droneAlt(-1); $('#dhAp').onclick=()=>droneAlt(1);
+  $('#dhP').oninput=e=>{ DR.pitch=+e.target.value; $('#dhPv').textContent=DR.pitch+'°'; };
+  $('#dhPlay').onclick=()=>{ DR.paused=!DR.paused; droneHud(); }; $('#dhRec').onclick=()=>{ DR.rec?droneRecStop():droneRecStart(); }; }
+function droneSpeed(d){ const st=[1,2,3,4,5,6,8,10,12,15,18,22,26,30,36,42,50,60]; let i=st.findIndex(v=>v>=DR.speed-1e-6); if(i<0) i=st.length-1; i=Math.max(0,Math.min(st.length-1,i+d)); DR.speed=st[i]; const e=$('#dhSv'); if(e) e.textContent=Math.round(DR.speed*3.6)+' km/h'; }
+function droneAlt(d){ const step=DR.alt<20?2:DR.alt<60?5:DR.alt<150?10:25; DR.alt=Math.max(2,Math.min(500,DR.alt+d*step)); const e=$('#dhAv'); if(e) e.textContent=Math.round(DR.alt)+' m'; }
+function startDrone(){ if(!R.on) enterRender(); if(!R.on) return; stopVideo(true);
+  const A=droneArea(), m=Math.max(A.ax,A.ay); DR.alt=Math.round(Math.max(12,Math.min(120,m*.55))); DR.altCur=DR.alt; DR.speed=Math.max(3,Math.min(26,Math.round(m/6))); DR.paused=false; DR.on=true;
+  droneBuild(); droneHud(); $('#droneHud').style.display='block'; document.body.classList.add('droning'); DR.last=performance.now(); requestRender(); toast('Drone no ar. Use + e − para a velocidade e ↑ ↓ para a altura.'); }
+function stopDrone(){ if(!DR.on) return; if(DR.rec) droneRecStop(); DR.on=false; const el=$('#droneHud'); if(el) el.style.display='none'; document.body.classList.remove('droning'); requestRender(); }
+function stepDrone(now){ if(!DR.on||!DR.curve) return false; const dt=Math.min(.1,Math.max(0,(now-DR.last)/1000)); DR.last=now;
+  if(!DR.paused) DR.u=(DR.u+DR.speed*dt/DR.len)%1; DR.altCur+=(DR.alt-DR.altCur)*Math.min(1,dt*2.2);
+  const p=DR.curve.getPointAt(DR.u); p.z=DR.z0+DR.altCur; const t=DR.curve.getTangentAt(DR.u); t.z=0; if(t.lengthSq()<1e-9) t.set(1,0,0); t.normalize();
+  if(!DR.fwd) DR.fwd=t.clone(); else { DR.fwd.lerp(t,Math.min(1,dt*1.6)); if(DR.fwd.lengthSq()<1e-6) DR.fwd.copy(t); DR.fwd.normalize(); }
+  persp.position.copy(p);
+  if(DR.path==='orbita') view.target.set(DR.c.x,DR.c.y,DR.hT);
+  else { const a=DR.pitch*Math.PI/180, D=30; view.target.copy(p).addScaledVector(DR.fwd,Math.cos(a)*D); view.target.z-=Math.sin(a)*D; }
+  syncCams(); return true; }
+function droneRecStart(){ if(!canvas.captureStream||typeof MediaRecorder==='undefined'){ toast('Este navegador não grava vídeo'); return; }
+  const stream=canvas.captureStream(30); let mime='video/webm;codecs=vp9'; if(!MediaRecorder.isTypeSupported(mime)) mime='video/webm';
+  const chunks=[], mr=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12e6}); mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+  mr.onstop=()=>{ $('#recbadge').style.display='none'; const blob=new Blob(chunks,{type:'video/webm'}); if(blob.size) saveFile('filmagem-drone-uni3d.webm',blob,'video/webm'); };
+  DR.rec=mr; mr.start(200); $('#recbadge').style.display='block'; if(DR.paused) DR.paused=false; droneHud(); toast('Gravando a filmagem do drone'); }
+function droneRecStop(){ const mr=DR.rec; DR.rec=null; try{ mr&&mr.stop(); }catch(e){} if(DR.on) droneHud(); }
+function droneKey(e){ const k=e.key, lk=k.toLowerCase();
+  if(k==='Escape'){ stopDrone(); return true; } if(k==='ArrowUp'||k==='PageUp'||lk==='r'){ droneAlt(1); return true; } if(k==='ArrowDown'||k==='PageDown'||lk==='f'){ droneAlt(-1); return true; }
+  if(k==='+'||k==='='||k==='ArrowRight'){ droneSpeed(1); return true; } if(k==='-'||k==='_'||k==='ArrowLeft'){ droneSpeed(-1); return true; } if(k===' '){ DR.paused=!DR.paused; droneHud(); return true; }
+  return WALKK.includes(lk); }
+
+function loop(now){ const anim=stepCamAnim(now)||stepDrone(now); if(needsRender||anim||rec){ needsRender=false; renderNow(); } requestAnimationFrame(loop); }
 
 
 /* ================= Icons ================= */
@@ -3618,6 +3688,7 @@ const ICON={
  dc_attrs:'<rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M9 9v11"/><path class="a" d="M12 13h6M12 16.5h4"/>',
  r_start:'<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z" fill="var(--icon-acc)" fill-opacity=".2"/><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path class="a" d="M10 9.5v6l5-3z" fill="var(--icon-acc)"/>',
  r_update:'<path class="a" d="M19 12a7 7 0 0 1-12 5M5 12a7 7 0 0 1 12-5"/><path class="a" d="M17 3v4h-4M7 21v-4h4"/>',
+ r_drone:'<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/><circle cx="6" cy="6" r="2.6" class="a"/><circle cx="18" cy="6" r="2.6" class="a"/><circle cx="6" cy="18" r="2.6" class="a"/><circle cx="18" cy="18" r="2.6" class="a"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/>',
  r_video:'<rect x="3" y="6" width="13" height="12" rx="1.5"/><path class="a" d="M16 10l5-3v10l-5-3z"/><circle cx="7" cy="10" r="1.3" class="af"/>',
  r_pano:'<ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><path d="M2.5 12h19"/><path class="a" d="M12 6.5c2.5 3.5 2.5 7.5 0 11M12 6.5c-2.5 3.5-2.5 7.5 0 11"/>',
  r_settings:'<circle cx="12" cy="12" r="3" class="a"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',
@@ -3662,7 +3733,7 @@ const ACTIONS={
   s_shell:()=>outerShell(), intersect:()=>intersectFaces(),
   sb_contours:()=>contoursToTerrain(), sb_detail:()=>addDetail(),
   loc:()=>locationDialog(), classify_panel:()=>openPanel('cls'), dc_options:()=>{ openPanel('ent'); if(!sel.G.size) toast('Selecione um objeto da biblioteca para ver as opções'); }, dc_attrs:()=>attrsDialog(),
-  r_start:()=> R.on?exitRender():enterRender(), r_update:()=>{ if(!R.on){ enterRender(); return; } buildRenderScene(); toast('Render atualizado com o modelo'); }, r_video:()=>startVideo(), r_pano:()=>renderPanorama(), r_settings:()=>{ if(!R.on) enterRender(); openPanel('render'); }, r_assets:()=>openPanel('comp'), r_shot:()=>renderShot(),
+  r_start:()=> R.on?exitRender():enterRender(), r_update:()=>{ if(!R.on){ enterRender(); return; } buildRenderScene(); toast('Render atualizado com o modelo'); }, r_drone:()=>DR.on?stopDrone():startDrone(),r_video:()=>startVideo(), r_pano:()=>renderPanorama(), r_settings:()=>{ if(!R.on) enterRender(); openPanel('render'); }, r_assets:()=>openPanel('comp'), r_shot:()=>renderShot(),
   ai_assist:()=>openPanel('ai'), ai_render:()=>aiRenderDialog(), ai_describe:()=>aiDescribe(),
   st_library:()=>openPanel('proj'), st_save:()=>saveToLibrary(), cl_open:()=>openPanel('proj'), cl_save:()=>saveToCloud(), cl_team:()=>shareInfo(),
   pc_import:()=>$('#pcIn').click(), pc_toggle:()=>{ for(const c of M.clouds) c.h=!c.h; rebuild(); },
@@ -3673,7 +3744,7 @@ function setStyle(m){ M.style.mode=m; rebuild(); syncToolbarState(); updatePanel
 const TITLES={new:'Novo',open:'Abrir',save:'Salvar',skp:'Salvar como .skp (SketchUp)',dae_in:'Importar COLLADA (.dae, .kmz)',mat_in:'Importar materiais por upload',cut:'Recortar',copy:'Copiar',paste:'Colar',erase:'Apagar',undo:'Desfazer',redo:'Refazer',print:'Imprimir',info:'Informações do modelo',makecomp:'Criar componente (G)',makegroup:'Criar grupo (Ctrl+G)',explode:'Explodir',extents:'Zoom extensões (Shift+Z)',prev:'Vista anterior',
   v_iso:'Iso',v_top:'Topo',v_front:'Frente',v_right:'Direita',v_back:'Trás',v_left:'Esquerda',st_xray:'Raio-X',st_back:'Arestas de fundo (K)',st_wire:'Estrutura de arame',st_hidden:'Linhas ocultas',st_shaded:'Sombreado',st_tex:'Sombreado com texturas',st_mono:'Monocromático',
   sec_planes:'Exibir planos de seção',sec_cut:'Exibir cortes de seção',sec_fill:'Preenchimento de seção',shadows:'Ligar/desligar sombras',shadow_panel:'Configurar sombras',tags:'Etiquetas',s_shell:'Casca externa',intersect:'Interseccionar faces',sb_contours:'Terreno das curvas de nível',sb_detail:'Adicionar detalhe',
-  loc:'Adicionar localização',classify_panel:'Classificador',dc_options:'Opções do componente',dc_attrs:'Atributos do componente',r_start:'Iniciar/parar render ao vivo',r_update:'Atualizar o render com o modelo',r_video:'Vídeo das cenas',r_pano:'Panorama 360°',r_settings:'Configurações do render',r_assets:'Biblioteca de objetos',r_shot:'Salvar imagem do render',
+  loc:'Adicionar localização',classify_panel:'Classificador',dc_options:'Opções do componente',dc_attrs:'Atributos do componente',r_start:'Iniciar/parar render ao vivo',r_update:'Atualizar o render com o modelo',r_drone:'Filmagem drone',r_video:'Vídeo das cenas',r_pano:'Panorama 360°',r_settings:'Configurações do render',r_assets:'Biblioteca de objetos',r_shot:'Salvar imagem do render',
   ai_assist:'Assistente IA',ai_render:'Render IA',ai_describe:'Memorial descritivo com IA',st_library:'Biblioteca de projetos',st_save:'Salvar na biblioteca',cl_open:'Abrir da nuvem',cl_save:'Salvar na nuvem',cl_team:'Compartilhar com a equipe',pc_import:'Importar nuvem de pontos',pc_toggle:'Mostrar/ocultar nuvens de pontos',text3d:'Texto 3D',scenes:'Cenas',materials:'Materiais',components:'Componentes',instructor:'Instrutor'};
 
 /* ================= Toolbars ================= */
@@ -3689,7 +3760,7 @@ const TOOLBARS=[
   {id:'constr',name:'Construção',items:['T:tape','T:dim','T:protractor','T:text','T:axes','text3d']},
   {id:'draw',name:'Desenho',items:['T:line','T:freehand','|','T:rect','T:rotrect','T:circle','T:polygon','|','T:arc','T:arc2','T:arc3','T:pie']},
   {id:'edit',name:'Editar',items:['T:move','T:push','T:rotate','T:followme','T:scale','T:offset']},
-  {id:'render',name:'Render ao vivo',items:['r_start','r_update','r_video','r_pano','r_shot','r_settings','r_assets']},
+  {id:'render',name:'Render ao vivo',items:['r_start','r_update','r_drone','r_video','r_pano','r_shot','r_settings','r_assets']},
   {id:'styles',name:'Estilos',items:['st_xray','st_back','|','st_wire','st_hidden','st_shaded','st_tex','st_mono']},
   {id:'tags',name:'Etiquetas',items:['tags','TAGSEL']},
   {id:'views',name:'Exibições',items:['v_iso','v_top','v_front','v_right','v_back','v_left']},
@@ -3710,7 +3781,7 @@ const TB_DEFAULT=new Set(['camera','large','draw','edit','render','styles','view
 let tbVisible=new Set(TB_DEFAULT); try{ const s=JSON.parse(localStorage.getItem('uni3d.toolbars')||'null'); if(Array.isArray(s)) tbVisible=new Set(s); }catch(e){}
 function btnHTML(it){ if(it==='|') return '<span class="sp"></span>'; if(it==='TAGSEL') return `<select class="inp" id="tagSel" title="Etiqueta da seleção" style="height:26px;max-width:140px"></select>`;
   if(it.startsWith('T:')){ const id=it.slice(2), t=T[id]; return `<button class="tbtn ${['orbit','pan','zoom','zoomwin','poscam','look','walk'].includes(id)?'':'model'}" data-tool="${id}" title="${esc(t.name)}${t.key&&t.key!=='—'?' ('+t.key+')':''}" aria-label="${esc(t.name)}">${svg(id)}</button>`; }
-  const viewOnly=['skp','v_iso','v_top','v_front','v_right','v_back','v_left','extents','prev','r_start','r_update','r_video','r_pano','r_settings','r_shot','r_assets','ai_render','ai_describe','ai_assist','print','info','loc','shadows','shadow_panel','st_library','cl_open','cl_team','scenes','instructor','components','materials','open','save'];
+  const viewOnly=['skp','v_iso','v_top','v_front','v_right','v_back','v_left','extents','prev','r_start','r_update','r_drone','r_video','r_pano','r_settings','r_shot','r_assets','ai_render','ai_describe','ai_assist','print','info','loc','shadows','shadow_panel','st_library','cl_open','cl_team','scenes','instructor','components','materials','open','save'];
   return `<button class="tbtn ${viewOnly.includes(it)?'':'model'}" data-act="${it}" title="${esc(TITLES[it]||it)}" aria-label="${esc(TITLES[it]||it)}">${svg(it==='classify_panel'?'classify':it==='components'?'components':it)}</button>`; }
 function buildToolbars(){ const box=$('#tbars'); let h='';
   for(const tb of TOOLBARS){ if(!tbVisible.has(tb.id)||!tb.items.length) continue; h+=`<div class="tb" data-tb="${tb.id}" title="${esc(tb.name)}"><span class="grip"></span>${tb.items.map(btnHTML).join('')}</div>`; }
@@ -3902,7 +3973,7 @@ const panelRender={ render(el){ const S=M.shadow; const months=['jan','fev','mar
    <div class="row"><label for="rEnvK">Entorno</label><select class="inp" id="rEnvK">${[['none','Sem entorno'],['grass','Grama e árvores'],['industrial','Condomínio industrial'],['city','Centro da cidade']].map(([v,l])=>`<option value="${v}" ${(R.env?(R.envKind||'grass'):'none')===v?'selected':''}>${l}</option>`).join('')}</select></div>
    <label class="tog">Carros e pessoas no entorno <input type="checkbox" id="rLife" ${R.life!==false?'checked':''}></label><label class="tog">Contornos das arestas <input type="checkbox" id="rEdges" ${R.edges?'checked':''}></label>
    <div class="seg" id="rQ"><button data-v="draft" class="${R.quality==='draft'?'on':''}">Rascunho</button><button data-v="high" class="${R.quality==='high'?'on':''}">Alta qualidade</button></div></div>
-  <div class="sec"><button class="btn primary" id="rShot">Salvar imagem em alta resolução</button><button class="btn" id="rPano">Panorama 360°</button><button class="btn" id="rVid">Vídeo das cenas</button><button class="btn" id="rAI">Render IA…</button><button class="btn" id="rBack">Voltar à modelagem</button></div>`;
+  <div class="sec"><button class="btn primary" id="rShot">Salvar imagem em alta resolução</button><button class="btn" id="rPano">Panorama 360°</button><button class="btn" id="rDrone">Filmagem drone</button><button class="btn" id="rVid">Vídeo das cenas</button><button class="btn" id="rAI">Render IA…</button><button class="btn" id="rBack">Voltar à modelagem</button></div>`;
   const rg=(id,fn)=>{ $(id).oninput=e=>fn(+e.target.value,e.target.nextElementSibling); };
   rg('#rHour',(v,o)=>{ S.hour=v; o.textContent=hourLabel(v); updateSun(); }); rg('#rNorth',v=>{ M.loc.north=v; updateSun(); });
   rg('#rExp',(v,o)=>{ R.exposure=v; o.textContent=nf(v,2); renderer.toneMappingExposure=v; requestRender(); }); rg('#rFov',(v,o)=>{ R.fov=v; o.textContent=v+'°'; persp.fov=v; syncCams(); });
@@ -3914,7 +3985,7 @@ const panelRender={ render(el){ const S=M.shadow; const months=['jan','fev','mar
   $('#rLife').onchange=e=>{ R.life=e.target.checked; buildRenderScene(); requestRender(); }; $('#rEdges').onchange=e=>{ R.edges=e.target.checked; buildRenderScene(); };
   $('#rQ').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; R.quality=b.dataset.v; applyRenderToggles(); buildRenderScene(); renderTray(); };
   $('#rEye').onclick=()=>{ const b=bbox(); const g=b.isEmpty()?0:Math.min(0,b.min.z); const dz=g+1.6-persp.position.z; persp.position.z+=dz; view.target.z+=dz; const d=view.target.clone().sub(persp.position); d.z=0; if(d.lengthSq()<1e-6) d.set(0,1,0); view.target.copy(persp.position).add(d.normalize().multiplyScalar(10)); syncCams(); };
-  $('#rShot').onclick=renderShot; $('#rPano').onclick=renderPanorama; $('#rVid').onclick=startVideo; $('#rAI').onclick=aiRenderDialog; $('#rBack').onclick=exitRender; } };
+  $('#rShot').onclick=renderShot; $('#rPano').onclick=renderPanorama; $('#rVid').onclick=startVideo; $('#rDrone').onclick=()=>DR.on?stopDrone():startDrone(); $('#rAI').onclick=aiRenderDialog; $('#rBack').onclick=exitRender; } };
 
 /* ================= Scenes ================= */
 function sceneSnap(){ return {p:persp.position.toArray(),t:view.target.toArray(),persp:view.persp,oh:view.orthoH,fov:persp.fov,style:{...M.style},shadow:{...M.shadow},sec:M.activeSec,cut:M.secShow.cut}; }
@@ -3954,7 +4025,7 @@ const MENUS={
     tl('tape'),tl('protractor'),tl('axes'),tl('dim'),tl('text'),{l:'Texto 3D…',f:text3DDialog},'-',tl('section'),tl('interact'),tl('classify'),
     {l:'Sandbox',sub:()=>[tl('smoove'),tl('drape'),{l:'Adicionar detalhe',f:addDetail},tl('flipedge')]},'-',{l:'Redefinir eixos',f:()=>act('resetAxes')}],
   Janela:()=>[...PANELS.map(([id,n])=>({l:n,f:()=>openPanel(id)})),'-',{l:'Informações do modelo',f:modelInfo},{l:'Localização…',f:locationDialog},{l:'Configurações do render',f:()=>act('r_settings')}],
-  Extensões:()=>[{l:'Render ao vivo',sub:()=>[{l:R.on?'Parar render':'Iniciar render',f:()=>act('r_start')},{l:'Atualizar render',f:()=>act('r_update')},{l:'Vídeo das cenas',f:startVideo},{l:'Panorama 360°',f:()=>act('r_pano')},{l:'Salvar imagem',f:()=>act('r_shot')}]},{l:'Assistente IA',f:()=>openPanel('ai')},{l:'Render IA…',f:aiRenderDialog},{l:'Memorial descritivo (IA)',f:aiDescribe},'-',{l:'Biblioteca de objetos',f:()=>openPanel('comp')},{l:'Nuvem de pontos',f:()=>openPanel('scan')}],
+  Extensões:()=>[{l:'Render ao vivo',sub:()=>[{l:R.on?'Parar render':'Iniciar render',f:()=>act('r_start')},{l:'Atualizar render',f:()=>act('r_update')},{l:'Filmagem drone',f:()=>DR.on?stopDrone():startDrone()},{l:'Vídeo das cenas',f:startVideo},{l:'Panorama 360°',f:()=>act('r_pano')},{l:'Salvar imagem',f:()=>act('r_shot')}]},{l:'Assistente IA',f:()=>openPanel('ai')},{l:'Render IA…',f:aiRenderDialog},{l:'Memorial descritivo (IA)',f:aiDescribe},'-',{l:'Biblioteca de objetos',f:()=>openPanel('comp')},{l:'Nuvem de pontos',f:()=>openPanel('scan')}],
   Ajuda:()=>[{l:'Atalhos de teclado',f:showShortcuts},{l:'Caixa de medidas',f:showVCBHelp},{l:'Instrutor',f:()=>openPanel('ins')},'-',{l:'Sobre o UNIPERFORMANCE',f:showAbout}],
 };
 $('#menus').innerHTML=Object.keys(MENUS).map(k=>`<button class="mbtn" data-menu="${k}">${k}</button>`).join('');
@@ -4301,7 +4372,7 @@ window.addEventListener('keydown',e=>{
   if($('#modal').classList.contains('show')){ if(e.key==='Escape') closeModal(); return; }
   if(isTyping(e.target)) return;
   const k=e.key, ctrl=e.ctrlKey||e.metaKey, lk=k.toLowerCase();
-  if(R.on){ if(k==='Escape'){ if(rec) stopVideo(true); else exitRender(); return; } if(WALKK.includes(lk)){ e.preventDefault(); R.keys.add(lk); kickWalk(); } return; }
+  if(R.on){ if(DR.on){ if(droneKey(e)) e.preventDefault(); return; } if(k==='Escape'){ if(rec) stopVideo(true); else exitRender(); return; } if(WALKK.includes(lk)){ e.preventDefault(); R.keys.add(lk); kickWalk(); } return; }
   if(e.target===vcbEl){ if(k==='Enter'){ e.preventDefault(); submitVCB(); } else if(k==='Escape'){ vcbEl.blur(); tool.cancel&&tool.cancel(); } return; }
   if(tool&&tool.onKey&&tool.onKey(e)){ e.preventDefault(); return; }
   if(tool&&tool.walkKeys&&!ctrl&&WALKK.includes(lk)&&lk!=='shift'){ e.preventDefault(); R.keys.add(lk); kickWalk(); return; }
